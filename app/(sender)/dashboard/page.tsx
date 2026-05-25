@@ -79,8 +79,34 @@ export default function SenderDashboard() {
 
                 </section>
 
-                {/*RECENT DELIVERIES SECTION*/
-                }
+                {/*RECENT DELIVERIES SECTION*/}
+                <section className="border border-border rounded-2xl bg-card shadow-xs overflow-hidden">
+                    <div className="p-6 border-b border-border">
+                        <h2 className="text-xl font-bold text-brand-primary">Recent Deliveries</h2>
+                        <p className="text-sm text-muted-foreground mt-0.5">
+                            A dated overview of your latest pod shipments
+                        </p>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="bg-muted/50 text-xs font-semibold uppercase text-muted-foreground border-b border-border">
+                                <th className="p-4">POD ID</th>
+                                 <th className="p-4">Contents</th>
+                                 <th className="p-4">Receiver Address</th>
+                                 <th className="p-4">Date</th>
+                                 <th className="p-4">Status</th>
+                                 <th className="p-4">Hash</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border text-sm">
+                               {/} {recentDeliveries.map((delivery) => (
+                                    }
+                            </tbody>
+                        </table>
+                    </div>
+
+                </section>
         </div>
 
 
