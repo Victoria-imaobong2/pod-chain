@@ -3,9 +3,10 @@ import { Plus, Wallet, Truck, ArrowUpRight, CheckCircle2, Clock} from 'lucide-re
 
 //Mock data to be used for recent deliveries
 const recentDeliveries = [
-{ id: "POD-001", receiver: "0x111C......YU", status: "Delivered", timestamp: "2024-06-01 14:30", item: "Groceries" },
-{ id: "POD-002", receiver: "0x222D......AB", status: "In Transit", timestamp: "2024-06-02 10:15", item: "Electronics" },
-{ id: "POD-003", receiver: "0x333E......CD", status: "Pending", timestamp: "2024-06-03 09:00", item: "Gadgets" },
+{ id: "POD-001", receiver: "0x111C......YU", status: "Delivered", timestamp: "2024-06-01 14:30", item: "Groceries", address: "123 royce street, Cityville" },
+{ id: "POD-002", receiver: "0x111C......YD", status: "Delivered", timestamp: "2024-06-01 14:30", item: "Groceries", address: "123 Item Street, Owerri" },
+{ id: "POD-003", receiver: "0x222D......AB", status: "In Transit", timestamp: "2024-06-02 10:15", item: "Electronics", address: "789 Oak Ave, Villagetown" },
+{ id: "POD-004", receiver: "0x333E......CD", status: "Pending", timestamp: "2024-06-03 09:00", item: "Gadgets", address: "456 Elm St, Townsville" },
 ];
 
 export default function SenderDashboard() {
@@ -100,7 +101,30 @@ export default function SenderDashboard() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border text-sm">
-                               {/} {recentDeliveries.map((delivery) => (
+                                {recentDeliveries.map((delivery) => (
+                                    <tr key={delivery.id} className="hover:bg-muted/20 transition colours">
+                                        <td className="p-4 font-mono font-semibold text-brand-primary">{delivery.id}</td>
+                                        <td className="p-4 text-foreground font-medium">{delivery.item}</td>
+                                        <td className="p-4">{delivery.address}</td>
+                                        <td className="p-4">{delivery.timestamp}</td>
+                                        <td className="p-4 text-right">
+                                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${
+                                                delivery.status === "Delivered"
+                                                ? "bg-success/10 text-success border-success/20"
+                                                : delivery.status === "In Transit"
+                                                ? "bg-brand-accent/10 text-brand-accent border-brand-accent/20"
+                                                : "bg-warning/10 text-warning border-warning/20"
+                                            }`}>
+                                                {delivery.status === "Delivered" && <CheckCircle2 className="w-3 h-3" />}
+                                                {delivery.status ==="In Transit" && <Truck className="w-3 h-3" />}
+                                                {delivery.status ===  "Pending" && <Clock className="w-3 h-3" />}
+                                                {delivery.status}
+                                            </span>
+                                            </td>
+                                        <td className="p-4">{delivery.receiver}</td>
+                                    </tr>
+                                ))
+
                                     }
                             </tbody>
                         </table>
