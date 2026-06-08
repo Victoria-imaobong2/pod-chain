@@ -1,5 +1,6 @@
 import React from 'react';
 import { Plus, Wallet, Truck, ArrowUpRight, CheckCircle2, Clock} from 'lucide-react';
+import BottomNav from '@/components/navigation/BottomNav';
 
 //Mock data to be used for recent deliveries
 const recentDeliveries = [
@@ -131,6 +132,7 @@ export default function SenderDashboard() {
                     </div>
 
                 </section>
+                
         </div>
 
 
