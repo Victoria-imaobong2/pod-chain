@@ -1,28 +1,29 @@
 import React from 'react';
-import { ShieldCheck, Wallet, Truck, ArrowUpRight, CheckCircle2, Clock} from 'lucide-react';
+import { Plus, Wallet, Truck, ArrowUpRight, CheckCircle2, BellDotIcon, CameraIcon, Clock} from 'lucide-react';
+import BottomNav from '@/components/navigation/BottomNav';
 
 //Mock data to be used for recent deliveries
-const recentDeliveries = [
-{ id: "POD-001", receiver: "0x111C......YU", status: "Delivered", timestamp: "2024-06-01 14:30", item: "Groceries", address: "123 royce street, Cityville" },
-{ id: "POD-002", receiver: "0x111C......YD", status: "Delivered", timestamp: "2024-06-01 14:30", item: "Groceries", address: "123 Item Street, Owerri" },
-{ id: "POD-003", receiver: "0x222D......AB", status: "In Transit", timestamp: "2024-06-02 10:15", item: "Electronics", address: "789 Oak Ave, Villagetown" },
-{ id: "POD-004", receiver: "0x333E......CD", status: "Pending", timestamp: "2024-06-03 09:00", item: "Gadgets", address: "456 Elm St, Townsville" },
+const activeDeliveries = [
+{ id: "POD-001", receiver: "0x111C......YU", sender: "Kunle Foodstuffs", status: "Delivered", timestamp: "2024-06-01 14:30", item: "Groceries", address: "123 royce street, Cityville" },
+{ id: "POD-002", receiver: "0x111C......YD", sender: "Hilda Baci Catering", status: "Delivered", timestamp: "2024-06-01 14:30", item: "Groceries", address: "123 Item Street, Owerri" },
+{ id: "POD-003", receiver: "0x222D......AB", sender: "Emeka and Sons Enterprises", status: "In Transit", timestamp: "2024-06-02 10:15", item: "Electronics", address: "789 Oak Ave, Villagetown" },
+{ id: "POD-004", receiver: "0x333E......CD", sender: "Alhaji Bello Autos", status: "Pending", timestamp: "2024-06-03 09:00", item: "Gadgets", address: "456 Elm St, Townsville" },
 ];
 
-export default function ReceiverDashboard() {
+export default function CourierDashboard() {
     return(
         <div className="min-h-screen bg-background p-4 md:p-8 space-y-8">
             {/* Header Section */}
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-border pb-6">
                 <div>
-                    <h1 className="text-3xl font-bold text-brand-primary tracking-tight">Sender Dashboard</h1>
+                    <h1 className="text-3xl font-bold text-brand-primary tracking-tight">Courier Dashboard</h1>
                     <p className='text-muted-foreground text-sm mt-1'>Your Blockchain-enabled Proof of delivery system</p>
                 </div>
 
-                {/*Delivery Buttons*/}
+                {/*Scan Delivery*/}
                 <button className="flex items-center gap-2 bg-brand-accent hover:opacity-90 text-black font-medium px-5 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer text-sm font-semibold">
                    <Plus className="w-4 h-4" />
-                   Create Delivery</button>
+                   Scan Delivery</button>
                 </header>
 
                 {/* Overview Cards */}
@@ -60,15 +61,15 @@ export default function ReceiverDashboard() {
                         </p>
                     </div>
 
-                    {/*Card 3: Active Deliveries*/}
+                    {/*Card 3: Requests for Deliveries*/}
                     <div className="border border-border p-6 rounded-2xl bg-card shadow-xs">
                         <div className="flex justify-between items-start">
                             <div>
-                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Deliveries</p>
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Delivery Requests</p>
                                 <p className="text-3xl font-bold text-brand-accent mt-2">04</p>
                             </div>
                             <div className="p-3 bg-success/5 rounded-xl text-success">
-                                <Truck className="w-6 h-6" />
+                                <CameraIcon className="w-6 h-6" />
                             </div>
 
                         </div>
@@ -80,12 +81,12 @@ export default function ReceiverDashboard() {
 
                 </section>
 
-                {/*RECENT DELIVERIES SECTION*/}
+                {/*REQUESTS FOR DELIVEry SECTION*/}
                 <section className="border border-border rounded-2xl bg-card shadow-xs overflow-hidden">
                     <div className="p-6 border-b border-border">
-                        <h2 className="text-xl font-bold text-brand-primary">Recent Deliveries</h2>
+                        <h2 className="text-xl font-bold text-brand-primary">New Delivery Requests</h2>
                         <p className="text-sm text-muted-foreground mt-0.5">
-                            A dated overview of your latest pod shipments
+                            Delivery Requests that need your attention. Accept or reject based on your availability.
                         </p>
                     </div>
                     <div className="overflow-x-auto">
@@ -96,30 +97,19 @@ export default function ReceiverDashboard() {
                                  <th className="p-4">Contents</th>
                                  <th className="p-4">Receiver Address</th>
                                  <th className="p-4">Date</th>
-                                 <th className="p-4">Status</th>
+                                 <th className="p-4">Sender</th>
                                  <th className="p-4">Hash</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border text-sm">
-                                {recentDeliveries.map((delivery) => (
+                                {activeDeliveries.map((delivery) => (
                                     <tr key={delivery.id} className="hover:bg-muted/20 transition colours">
                                         <td className="p-4 font-mono font-semibold text-brand-primary">{delivery.id}</td>
                                         <td className="p-4 text-foreground font-medium">{delivery.item}</td>
                                         <td className="p-4">{delivery.address}</td>
                                         <td className="p-4">{delivery.timestamp}</td>
                                         <td className="p-4 text-right">
-                                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${
-                                                delivery.status === "Delivered"
-                                                ? "bg-success/10 text-success border-success/20"
-                                                : delivery.status === "In Transit"
-                                                ? "bg-brand-accent/10 text-brand-accent border-brand-accent/20"
-                                                : "bg-warning/10 text-warning border-warning/20"
-                                            }`}>
-                                                {delivery.status === "Delivered" && <CheckCircle2 className="w-3 h-3" />}
-                                                {delivery.status ==="In Transit" && <Truck className="w-3 h-3" />}
-                                                {delivery.status ===  "Pending" && <Clock className="w-3 h-3" />}
-                                                {delivery.status}
-                                            </span>
+                                            {delivery.sender}
                                             </td>
                                         <td className="p-4">{delivery.receiver}</td>
                                     </tr>
