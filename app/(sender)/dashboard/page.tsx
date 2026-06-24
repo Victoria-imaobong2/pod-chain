@@ -1,7 +1,9 @@
+"use client";
+
 import React from 'react';
 import { Plus, Wallet, Truck, ArrowUpRight, CheckCircle2, Clock} from 'lucide-react';
 import BottomNav from '@/components/navigation/BottomNav';
-
+import FloatingActionButton from '@/components/sender/FloatingActionButton';
 //Mock data to be used for recent deliveries
 const recentDeliveries = [
 { id: "POD-001", receiver: "0x111C......YU", status: "Delivered", timestamp: "2024-06-01 14:30", item: "Groceries", address: "123 royce street, Cityville" },
@@ -11,6 +13,9 @@ const recentDeliveries = [
 ];
 
 export default function SenderDashboard() {
+    const handleCreateDelivery = () => {
+        alert("Creating delivery and initializing smart contrac.t");
+    };  
     return(
         <div className="min-h-screen bg-background p-4 md:p-8 space-y-8">
             {/* Header Section */}
@@ -21,9 +26,7 @@ export default function SenderDashboard() {
                 </div>
 
                 {/*Delivery Buttons*/}
-                <button className="flex items-center gap-2 bg-brand-accent hover:opacity-90 text-black font-medium px-5 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer text-sm font-semibold">
-                   <Plus className="w-4 h-4" />
-                   Create Delivery</button>
+                <FloatingActionButton onClick={handleCreateDelivery} />
                 </header>
 
                 {/* Overview Cards */}

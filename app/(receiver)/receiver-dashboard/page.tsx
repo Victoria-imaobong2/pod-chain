@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, Wallet, Truck, ArrowUpRight, CheckCircle2, Clock} from 'lucide-react';
+import { ShieldCheck, Wallet, Truck, ArrowUpRight, CheckCircle2, Plus, Clock} from 'lucide-react';
 
 //Mock data to be used for recent deliveries
 const recentDeliveries = [
@@ -15,7 +15,7 @@ export default function ReceiverDashboard() {
             {/* Header Section */}
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-border pb-6">
                 <div>
-                    <h1 className="text-3xl font-bold text-brand-primary tracking-tight">Sender Dashboard</h1>
+                    <h1 className="text-3xl font-bold text-brand-primary tracking-tight">Receiver Dashboard</h1>
                     <p className='text-muted-foreground text-sm mt-1'>Your Blockchain-enabled Proof of delivery system</p>
                 </div>
 
