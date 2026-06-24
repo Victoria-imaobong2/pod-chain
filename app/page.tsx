@@ -24,9 +24,9 @@ export default function HomePage() {
     ];
 
     return (
-      <main className="min-h-screen bg-slate-50 flex-col lg:flex-row">
+      <main className="min-h-screen bg-slate-50 flex flex-col lg:flex-row">
         {/* LEFT PANEL */}
-        <div className='bg-slate-900 text-white p-8 lg:p-12 flex flex-center w-full'> 
+        <div className='bg-slate-900 text-white p-8 lg:p-12 flex flex-col justify-center w-full lg:w-5/12 xl:w-4/12'> 
         <div className="max-w-md mx-auto lg:mx-0">
           <h1 className="text-6xl lg:text-5xl tracking-tight font-bold m-8 p-4 text-white size={24}">
             POD Chain
