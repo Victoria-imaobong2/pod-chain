@@ -1,21 +1,53 @@
 "use client";
 
-import React from 'react';
-import { Plus, Wallet, Truck, ArrowUpRight, CheckCircle2, Clock} from 'lucide-react';
+import React, {useState} from 'react';
+import { Plus, Wallet, Truck, ArrowUpRight, CheckCircle2, Clock, X} from 'lucide-react';
 import BottomNav from '@/components/navigation/BottomNav';
 import FloatingActionButton from '@/components/sender/FloatingActionButton';
+import StatusBadge from '@/components/shared/StatusBadge';
 //Mock data to be used for recent deliveries
-const recentDeliveries = [
+
+
+export default function SenderDashboard() {
+    const [isModalOpen, setIsModalOpen] = useState(false);
+
+    const [recentDeliveries, setRecentDeliveries] = useState([
 { id: "POD-001", receiver: "0x111C......YU", status: "Delivered", timestamp: "2024-06-01 14:30", item: "Groceries", address: "123 royce street, Cityville" },
 { id: "POD-002", receiver: "0x111C......YD", status: "Delivered", timestamp: "2024-06-01 14:30", item: "Groceries", address: "123 Item Street, Owerri" },
 { id: "POD-003", receiver: "0x222D......AB", status: "In Transit", timestamp: "2024-06-02 10:15", item: "Electronics", address: "789 Oak Ave, Villagetown" },
 { id: "POD-004", receiver: "0x333E......CD", status: "Pending", timestamp: "2024-06-03 09:00", item: "Gadgets", address: "456 Elm St, Townsville" },
-];
+]);
 
-export default function SenderDashboard() {
+const [newItem, setNewItem] = useState('');
+const [newAddress, setNewAddress] = useState('');
+const [newReceiver, setNewReceiver] = useState('');
+
     const handleCreateDelivery = () => {
+        setIsModalOpen(true);
         alert("Creating delivery and initializing smart contrac.t");
     };  
+
+    const handleSubmitOrder = (e: React.FormEvent) => {
+        e.preventDefault();
+
+        const newOrder = {
+            id: `POD-00${recentDeliveries.length + 1}`,
+            item: newItem,
+            address: newAddress,
+            receiver: newReceiver.substring(0,10) + "......."
+            + newReceiver.substring(newReceiver.length - 4),
+            status: "Pending",
+            timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+            hash: "Deploying Escrow"
+        };
+
+        setRecentDeliveries([newOrder, ...recentDeliveries]);
+        setIsModalOpen(false);
+        setNewItem('');
+        setNewAddress('');
+        setNewReceiver('');
+    };
+    
     return(
         <div className="min-h-screen bg-background p-4 md:p-8 space-y-8">
             {/* Header Section */}
@@ -109,8 +141,10 @@ export default function SenderDashboard() {
                                     <tr key={delivery.id} className="hover:bg-muted/20 transition colours">
                                         <td className="p-4 font-mono font-semibold text-brand-primary">{delivery.id}</td>
                                         <td className="p-4 text-foreground font-medium">{delivery.item}</td>
-                                        <td className="p-4">{delivery.address}</td>
+                                        <td className="p-4 text-muted-foreground">{delivery.address}</td>
                                         <td className="p-4">{delivery.timestamp}</td>
+
+                                        {/* Status Badge Component */}
                                         <td className="p-4 text-right">
                                             <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${
                                                 delivery.status === "Delivered"
@@ -135,9 +169,35 @@ export default function SenderDashboard() {
                     </div>
 
                 </section>
-                
+
+                {isModalOpen && (
+                    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white border rounded-2xl p-6 shadow-2xl">
+            <div className="flex justify-between items-center border-b pb-3 mb-4">
+              <h3 className="text-lg font-bold text-slate-900">Initialize New Smart Contract Escrow</h3>
+                <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+            <form onSubmit={handleSubmitOrder} className="space-y-4">
+                <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Item Description</label>
+                    <input type="text" required value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="e.g., Organic Cosmetics Kit" className="w-full p-2.5 border rounded-xl outline-none focus:border-teal-500 text-slate-900 bg-slate-50 focus:bg-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Delivery Destination Address</label>
+                <input type="text" required value={newAddress} onChange={(e) => setNewAddress(e.target.value)} placeholder="e.g., 14 Douglas Road, Owerri" className="w-full p-2.5 border rounded-xl outline-none focus:border-teal-500 text-slate-900 bg-slate-50 focus:bg-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Receiver Wallet Target (0x...)</label>
+                <input type="text" required value={newReceiver} onChange={(e) => setNewReceiver(e.target.value)} placeholder="0x..." className="w-full p-2.5 border rounded-xl font-mono outline-none focus:border-teal-500 text-slate-900 bg-slate-50 focus:bg-white" />
+                </div>
+                <button type="submit" className="w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold py-3 rounded-xl shadow-md transition-all">Initialize Escrow</button>
+            </form>
+          </div>
         </div>
+         }
 
-
-    )
+         <BottomNav />
+     </div>          
+    );
 }
