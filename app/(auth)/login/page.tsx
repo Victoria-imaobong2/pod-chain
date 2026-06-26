@@ -42,9 +42,10 @@ export default function LoginPage() {
             router.push('/scan');
         }
        
-    }catch(err: any){
-            setError(err.message || 'Connection failed. Please try again.');
-    }finally {
+    } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Connection failed. Please try again.';
+            setError(message);
+    } finally {
         setLoading(false);
     }
     }

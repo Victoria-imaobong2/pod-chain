@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { LayoutDashboard, ShieldCheck, QrCode } from 'lucide-react';
+import { LayoutDashboard, ShieldCheck, QrCode, LogIn } from 'lucide-react';
 export default function HomePage() {
   
     const navHome = [
@@ -25,6 +25,15 @@ export default function HomePage() {
 
     return (
       <main className="min-h-screen bg-slate-50 flex flex-col lg:flex-row">
+        {/* Login access for big screen */}
+        <div className="absolute top-6 right-6 z-10 hidden sm:block">
+          <Link href="/login"
+          className="inline-flex  items-center gap-2 px-4 py-2 border border-slate-200 bg-white rounded-md font-semibold text-sm shadow-xs transition-all" >
+            <LogIn className="w-4 h-4 text-teal-600" />
+            Login to your account
+            </Link>
+        </div>
+
         {/* LEFT PANEL */}
         <div className='bg-slate-900 text-white p-8 lg:p-12 flex flex-col justify-center w-full lg:w-5/12 xl:w-4/12'> 
         <div className="max-w-md mx-auto lg:mx-0">
@@ -34,6 +43,15 @@ export default function HomePage() {
           <p className="mt-4 text-slate-400 text-base lg:text-lg leading-relaxed">
             A blockchain-enabled, tamper-evident Proof of Delivery framework designed specifically for SME local logistics.
           </p>
+
+          <div className="mt-6 sm:hidden">
+            <Link href="/login"
+            className="inline-flex items-center gap-2 w-full justify-center px-4 py-3 bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm rounded-xl shadow-md transition-all"
+            >
+              <LogIn size={16} />
+              Sign In to Your Workspace
+            </Link>
+          </div>
         </div>
         </div>
         

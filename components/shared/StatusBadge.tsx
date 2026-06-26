@@ -1,4 +1,5 @@
-type StatusType = 'Created' | 'InTransit' | 'Delivered' | 'Failed';
+
+export type StatusType = 'Created' | 'InTransit' | 'Delivered' | 'Failed';
 
 export default function StatusBadge({ status}: {status: StatusType }) {
     const styles = {

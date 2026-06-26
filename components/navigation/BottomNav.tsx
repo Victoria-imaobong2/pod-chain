@@ -6,7 +6,7 @@ import {Home, ShieldCheck, History, QrCode, LayoutDashboard, PlusCircle} from 'l
 export default function BottomNav() {
     const pathname = usePathname();
 const navItems = [
-    { id: "home", label: "Home", href: "/page", icon: LayoutDashboard},
+    { id: "home", label: "Home", href: "", icon: LayoutDashboard},
     { id: "Create", label : "Create", href: "/sender/create-delivery", icon: PlusCircle},
     { id: "History", label : "History", href: "/sender/history", icon: History},
     { id : "Wallet", label : "Wallet", href: "/sender/wallet", icon: ShieldCheck},
