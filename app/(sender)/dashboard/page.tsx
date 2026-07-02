@@ -2,9 +2,8 @@
 
 import React, {useState} from 'react';
 import { Plus, Wallet, Truck, ArrowUpRight, CheckCircle2, Clock, X} from 'lucide-react';
-import BottomNav from '@/components/navigation/BottomNav';
-import FloatingActionButton from '@/components/sender/FloatingActionButton';
 import StatusBadge, { StatusType } from '@/components/shared/StatusBadge';
+import BottomNavSender from '@/components/navigation/BottomNavSender';
 //Mock data to be used for recent deliveries
 
 
@@ -60,7 +59,6 @@ const [newStatus, setNewStatus] = useState('Pending');
                 </div>
 
                 {/*Delivery Buttons*/}
-                <FloatingActionButton onClick={handleCreateDelivery} />
                 </header>
 
                 {/* Overview Cards */}
@@ -161,6 +159,7 @@ const [newStatus, setNewStatus] = useState('Pending');
                     </div>
 
                 </section>
+                <BottomNavSender onCreateClick={handleCreateDelivery} />
 
                 {isModalOpen && (
                     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
@@ -187,8 +186,6 @@ const [newStatus, setNewStatus] = useState('Pending');
           </div>
         </div>
          )}
-
-         <BottomNav />
-     </div>          
+           </div>          
     );
 }
