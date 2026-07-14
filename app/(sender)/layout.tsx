@@ -11,7 +11,7 @@ export default function SenderLayout({
     return(
         <div className="min-h-screen bg-background p-4 md:p-8 space-y-8">
             {children}
-            <BottomNav />
+            
         </div>
     )
 }

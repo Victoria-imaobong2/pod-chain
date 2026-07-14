@@ -36,7 +36,7 @@ export default function BottomNavReceiver({ onCreateClick }: ReceiverNavProps) {
       </button>
 
       {/* 3. Scanner interface shortcut */}
-      <Link href="/scan" className={`flex flex-col items-center gap-0.5 text-[10px] font-black uppercase tracking-widest transition-colors ${pathname === '/scan' ? 'text-teal-600' : 'text-slate-400'}`}>
+      <Link href= ""className={`flex flex-col items-center gap-0.5 text-[10px] font-black uppercase tracking-widest transition-colors ${pathname === '/scan' ? 'text-teal-600' : 'text-slate-400'}`}>
         <QrCode size={20} />
         <span>Verify Rider</span>
       </Link>
