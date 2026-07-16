@@ -16,7 +16,7 @@ export default function LoginPage() {
         setError('');
 
         try{
-            const response = await fetch('/api/auth/login', {
+            const response = await fetch('http://localhost:8000/api/auth/login', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded'},
@@ -27,16 +27,17 @@ export default function LoginPage() {
             });
 
             if (!response.ok) {
-                throw new Error('Login failed');
+               const errorData = await response.json(); 
+                throw new Error(errorData.detail || 'Login failed');
         }
         const data = await response.json();
 
-        localStorage.setItem('pod_token', data.access_token);
-        localStorage.setItem('user_role', data.role);
-
-        if (data.role === 'sender'){
+        localStorage.setItem("token", data.access_token);
+        const role = data.user.role.toLowerCase();
+        
+        if (role === 'sender'){
             router.push('/dashboard');
-        } else if (data.role === 'receiver')  {
+        } else if (role === 'receiver')  {
             router.push('/receiver-dashboard');
         }else{
             router.push('/scan');
