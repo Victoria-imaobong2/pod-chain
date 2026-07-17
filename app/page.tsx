@@ -12,6 +12,7 @@ import {
   X,
   ArrowRight,
 } from "lucide-react";
+import {ConnectButton} from "@rainbow-me/rainbowkit";
 
 export default function HomePage() {
   const router = useRouter();
@@ -118,6 +119,8 @@ export default function HomePage() {
 
         {/* Create Account Button */}
         <div className="absolute top-6 right-6 hidden sm:block z-20">
+          {/*Interface for connecting wallet*/}
+          
           <button
             type="button"
             onClick={() => setIsSignupOpen(true)}
@@ -334,6 +337,9 @@ export default function HomePage() {
                     <option value="admin">Receiver/Customer</option>
                     <option value="courier">Courier</option>
                   </select>
+                </div>
+                <div className="mt-4" >
+                  <ConnectButton />
                 </div>
 
                 <div>
