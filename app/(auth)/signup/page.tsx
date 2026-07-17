@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Lock, Mail, ArrowRight, ShieldCheck, AlertTriangle } from 'lucide-react';
 
-export default function LoginPage() {
+export default function SignUpPage() {
     const router = useRouter();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -36,7 +36,7 @@ export default function LoginPage() {
         const role = data.user.role.toLowerCase();
         
         if (role === 'sender'){
-            router.push('/login');
+            router.push('/dashboard');
         } else if (role === 'receiver')  {
             router.push('/receiver-dashboard');
         }else{
@@ -57,8 +57,8 @@ export default function LoginPage() {
                     <div className="p-3 bg-teal-50 rounded-2xl text-teal-700 mb-3">
                         <ShieldCheck size={32} />
                     </div>
-                    <h1 className="text-2xl font-bold text-slate-950">Welcome back</h1>
-                    <p className="text-sm text-slate-500 mt-1">Access your secure Logistics proof of delivery app</p>
+                    <h1 className="text-2xl font-bold text-slate-950">Create new account</h1>
+                    <p className="text-sm text-slate-500 mt-1">Signup to use the secure Logistics proof of delivery app</p>
                 </div>
 
                 <form onSubmit={handleLogin} className="space-y-4">
@@ -100,7 +100,7 @@ export default function LoginPage() {
                 disabled={loading}
                 className="w-full bg-teal-600 hover:bg-teal-700 text-white py-3.5 rounded-xl font-semibold transition-all shadow-md flex items-center justify-center gap-2 mt-2 disabled:opacity-50"
                 >
-                   {loading ? 'Authenticating...' : 'Sign In to Portal'}
+                   {loading ? 'Creating Account...' : 'Create Account'}
                    {!loading && <ArrowRight size={18} />}
                 </button>
                 </form> 
