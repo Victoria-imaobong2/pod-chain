@@ -328,7 +328,7 @@ export default function HomePage() {
                   <select
                     id="Role"
                     required
-                    value={selectedRole}
+                    value={selectedRole || ""}
                     onChange={(e) => setSelectedRole(e.target.value as 'sender' | 'receiver' | 'courier')}
                     className="w-full rounded-xl border border-slate-300 py-3 pl-10 pr-4 outline-none transition focus:border-teal-500"
                   >
