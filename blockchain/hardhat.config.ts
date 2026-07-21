@@ -1,5 +1,8 @@
 import hardhatToolboxViemPlugin from "@nomicfoundation/hardhat-toolbox-viem";
 import { configVariable, defineConfig } from "hardhat/config";
+import * as dotenv from "dotenv";
+
+dotenv.config(); //this will load variables from .env
 
 export default defineConfig({
   plugins: [hardhatToolboxViemPlugin],
@@ -34,5 +37,13 @@ export default defineConfig({
       url: configVariable("SEPOLIA_RPC_URL"),
       accounts: [configVariable("SEPOLIA_PRIVATE_KEY")],
     },
+
+    baseSepolia: {
+      type: "http",
+      chainType: "op",
+      chainId: 84532,
+      url: "https://sepolia.base.org",
+      accounts: [configVariable("PRIVATE_KEY")],
+    }
   },
 });

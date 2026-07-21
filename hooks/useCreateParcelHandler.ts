@@ -1,11 +1,11 @@
-// hooks/useCreateParcelHandler.ts
 "use client";
 
-import { useWriteContract } from "wagmi";
+import { useWriteContract, useAccount } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { keccak256, encodePacked, parseEther } from "viem";
-import { DeliveryEscrowABI } from "../DeliveryEscrow";
-// Replace with your actual deployed contract address
-const CONTRACT_ADDRESS = "0xYourDeployedContractAddressHere";
+import { DeliveryEscrowABI } from "../lib/abi/DeliveryEscrow";
+// My deployed contract address
+const CONTRACT_ADDRESS = "0xa4e00acfb49d65ad91239aa968c57341a6361c84";
 
 interface ParcelFormInputs {
   receiverEmail: string;
@@ -17,7 +17,21 @@ interface ParcelFormInputs {
 export function useCreateParcelHandler() {
   const { writeContractAsync, isPending: isSubmittingTx } = useWriteContract();
 
+  const { isConnected } = useAccount();
+  const { openConnectModal } = useConnectModal();
+
   const handleCreateParcel = async (data: ParcelFormInputs) => {
+
+    if (!isConnected) {
+      // Automatically trigger RainbowKit wallet modal if not connected
+      if (openConnectModal) {
+        openConnectModal();
+      } else {
+        alert("Please connect your wallet to create a parcel.");
+      }
+      return;
+
+    }
     try {
       // 1. Generate a cryptographically secure 6-digit PIN
       const array = new Uint32Array(1);

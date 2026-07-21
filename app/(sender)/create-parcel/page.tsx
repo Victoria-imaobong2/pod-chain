@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { useCreateParcelHandler } from "@/hooks/useCreateParcelHandler"; // Adjust path as needed
+import { useCreateParcelHandler } from "../../../hooks/useCreateParcelHandler"; 
 
 export default function CreateParcelPage() {
   const { handleCreateParcel, isSubmittingTx } = useCreateParcelHandler();
