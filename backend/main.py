@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
+from routers.parcels import router as parcel_router
 
 from database import Base, engine, get_db
 from models import UserModel, UserRole
@@ -35,6 +36,8 @@ class LoginRequest(BaseModel):
     wallet_address: str | None = None
 
 # --- Endpoints for Authorization ---
+
+
 @app.post("/api/auth/register", status_code=status.HTTP_201_CREATED)
 def register(user_data: RegisterRequest, db: Session = Depends(get_db)):
     # Checking if another user with the same email exists
@@ -54,6 +57,8 @@ def register(user_data: RegisterRequest, db: Session = Depends(get_db)):
     db.refresh(new_user)
     return {"message": "User registered Successfully", "id": new_user.id}
 
+app.include_router(parcel_router)
+
 @app.post("api/auth/login")
 def login(credentials: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(UserModel).filter(UserModel.email == credentials.email).first()
@@ -72,6 +77,7 @@ def login(credentials: LoginRequest, db: Session = Depends(get_db)):
 
     access_token = create_access_token(data=token_data)
 
+    
     #Return JWT token alongside user details for client routing
 
     return{
@@ -84,4 +90,8 @@ def login(credentials: LoginRequest, db: Session = Depends(get_db)):
             "wallet_address": user.wallet_address
         }
     }
+
+@app.get("/")
+def read_root():
+    return {"message": "POD Chain Backend API is Running"}
     
