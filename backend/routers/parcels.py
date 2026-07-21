@@ -1,6 +1,9 @@
 # backend/parcels.py (or backend/routers/parcels.py)
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Depends, Query, status
 from pydantic import BaseModel, EmailStr
+from typing import Optional
+from datetime import datetime
+from app.auth import get_current_user
 import qrcode
 import io
 import base64
@@ -9,6 +12,27 @@ router = APIRouter(
     prefix="/api/v1/parcels",
     tags=["Parcels & Notifications"]
 )
+
+@router.get("/user-shipments")
+def get_user_shipments(
+    start_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    limit: Optional[int] = Query(None),
+    current_user: dict = Depends(get_current_user)
+):
+    Query = db.query(Parcel).filter(Parcel.sender_id == current_user["id"])
+
+    if start_date:
+        query = query.filter(Parcel.created_ >= datetime.strptime(start_date, "%Y-%m-%d"))
+    if end_date:
+        query = query.filter(Parcel.created_ >= datetime.strptime(start_date, "%Y-%m-%d"))
+
+    query = query.order_by(Parcel.created_at.desc())
+
+    if limit:
+        query = query.limit(limit)
+
+    return query.all()
 
 class NotifyRequest(BaseModel):
     parcelId: int
@@ -52,5 +76,5 @@ async def process_delivery_secret(payload: NotifyRequest):
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate QR notification: {str(e)}"
+            detail="Failed to generate QR notification: {str(e)}"
         )
