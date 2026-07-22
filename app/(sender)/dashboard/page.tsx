@@ -9,9 +9,8 @@ import {
   X,
   Filter,
 } from "lucide-react";
-import StatusBadge from "@/components/shared/StatusBadge";
+import StatusBadge, { StatusType } from "@/components/shared/StatusBadge";
 import BottomNavSender from "@/components/navigation/BottomNavSender";
-import { StatusType } from "@/components/shared/StatusBadge";
 
 interface DeliveryItem {
   id: string;
@@ -63,46 +62,47 @@ const INITIAL_DELIVERIES: DeliveryItem[] = [
 ];
 
 export default function SenderDashboard() {
-  // Corrected useState syntax
   const [isSeeAllOpen, setIsSeeAllOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Deliveries state
-  const [recentDeliveries, setRecentDeliveries] = useState<DeliveryItem[]>([]);
+  // Deliveries state with Lazy Initialization from localStorage
+  const [recentDeliveries, setRecentDeliveries] = useState<DeliveryItem[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("pod_recent_deliveries");
+        if (saved) return JSON.parse(saved) as DeliveryItem[];
+      } catch (e) {
+        console.error("Storage load error", e);
+      }
+    }
+    return INITIAL_DELIVERIES;
+  });
+
+  // Keep filtered list in sync with main deliveries
+  const [filteredDeliveries, setFilteredDeliveries] = useState<DeliveryItem[]>(recentDeliveries);
+
+  // Save deliveries to localStorage whenever updated
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("pod_recent_deliveries", JSON.stringify(recentDeliveries));
+      } catch (e) {
+        console.error("Storage save error", e);
+      }
+    }
+  }, [recentDeliveries]);
 
   // Date range filter state for "See All" modal
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [filteredDeliveries, setFilteredDeliveries] = useState<DeliveryItem[]>([]);
 
   // Form Fields State
   const [newItem, setNewItem] = useState("");
   const [newAddress, setNewAddress] = useState("");
   const [newReceiver, setNewReceiver] = useState("");
 
-  // Load saved deliveries on mount from localStorage to persist across logouts
-  useEffect(() => {
-    const saved = localStorage.getItem("pod_recent_deliveries");
-    if (saved) {
-      try {
-        setRecentDeliveries(JSON.parse(saved));
-      } catch (e) {
-        setRecentDeliveries(INITIAL_DELIVERIES);
-      }
-    } else {
-      setRecentDeliveries(INITIAL_DELIVERIES);
-      localStorage.setItem("pod_recent_deliveries", JSON.stringify(INITIAL_DELIVERIES));
-    }
-  }, []);
-
-  // Synchronize modal list when recent deliveries change
-  useEffect(() => {
-    setFilteredDeliveries(recentDeliveries);
-  }, [recentDeliveries]);
-
-  // Handle Date Range Filtering
-  const handleFilterByDate = () => {
-    let result = [...recentDeliveries];
+  const filterDeliveries = (deliveries: DeliveryItem[]) => {
+    let result = [...deliveries];
 
     if (startDate) {
       result = result.filter((d) => d.timestamp >= startDate);
@@ -111,7 +111,12 @@ export default function SenderDashboard() {
       result = result.filter((d) => d.timestamp <= `${endDate} 23:59`);
     }
 
-    setFilteredDeliveries(result);
+    return result;
+  };
+
+  // Handle Date Range Filtering
+  const handleFilterByDate = () => {
+    setFilteredDeliveries(filterDeliveries(recentDeliveries));
   };
 
   const handleResetFilter = () => {
@@ -136,16 +141,30 @@ export default function SenderDashboard() {
           : newReceiver,
     };
 
-    const updated = [newOrder, ...recentDeliveries];
-    setRecentDeliveries(updated);
-    localStorage.setItem("pod_recent_deliveries", JSON.stringify(updated));
+    const updatedDeliveries = [newOrder, ...recentDeliveries];
+    setRecentDeliveries(updatedDeliveries);
+    setFilteredDeliveries(
+      startDate || endDate ? filterDeliveries(updatedDeliveries) : updatedDeliveries
+    );
 
     setNewItem("");
     setNewAddress("");
     setNewReceiver("");
     setIsModalOpen(false);
   };
+// Adding a state for image file and IPFS status
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [ipfsCid, setIpfsCid] = useState<string>("");
+  const [isUpload, setIsUpload] = useState<string>("");
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  if (e.target.files && e.target.files[0]) {
+    const file = e.target.files[0];
+    setSelectedFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  }
+};
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-8 pb-32 max-w-7xl mx-auto font-sans antialiased">
       {/* HEADER SECTION */}

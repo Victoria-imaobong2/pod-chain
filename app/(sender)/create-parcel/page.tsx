@@ -1,39 +1,183 @@
-// app/(sender)/create-parcel/page.tsx
 "use client";
 
 import { useState } from "react";
-import { useCreateParcelHandler } from "../../../hooks/useCreateParcelHandler"; 
+import { useCreateParcelHandler } from "../../../hooks/useCreateParcelHandler";
+import { Upload, Image as ImageIcon, Loader2 } from "lucide-react";
 
 export default function CreateParcelPage() {
   const { handleCreateParcel, isSubmittingTx } = useCreateParcelHandler();
-  
+
   const [formData, setFormData] = useState({
     receiverEmail: "",
     receiverPhone: "",
     courierFeeEth: "0.01",
-    ipfsHash: "QmSampleIpfsHashFromPinata",
+    ipfsHash: "",
   });
+
+  // State for image upload
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setSelectedFile(file);
+      setPreviewUrl(URL.createObjectURL(file));
+    }
+  };
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const result = await handleCreateParcel(formData);
-      alert("Parcel Created Successfully! Transaction Hash: " + result.txHash);
+      // Pass both form inputs AND the selected package photo to the handler
+      const result = await handleCreateParcel(formData, selectedFile);
+
+      if (result?.success) {
+        alert(
+          `Parcel Created Successfully!\n\nTransaction Hash: ${result.txHash}\nIPFS Hash: ${result.ipfsHash}\nDelivery PIN: ${result.pin}`
+        );
+
+        // Reset form
+        setFormData({
+          receiverEmail: "",
+          receiverPhone: "",
+          courierFeeEth: "0.01",
+          ipfsHash: "",
+        });
+        setSelectedFile(null);
+        setPreviewUrl(null);
+      }
     } catch (err) {
+      console.error(err);
       alert("Failed to create parcel. Check console for details.");
     }
   };
 
   return (
-    <form onSubmit={onSubmit} className="max-w-md p-6 bg-white rounded-xl shadow">
-      {/* Form inputs go here */}
-      <button 
-        type="submit" 
-        disabled={isSubmittingTx}
-        className="w-full bg-blue-600 text-white py-2 rounded-lg"
+    <div className="min-h-screen bg-slate-50 p-4 md:p-8 flex items-center justify-center">
+      <form
+        onSubmit={onSubmit}
+        className="w-full max-w-lg p-6 md:p-8 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-5"
       >
-        {isSubmittingTx ? "Confirming on Blockchain..." : "Create Delivery Escrow"}
-      </button>
-    </form>
+        <div>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+            Create Delivery Escrow
+          </h2>
+          <p className="text-xs text-slate-500 font-medium mt-1">
+            Lock funds in smart contract and pin parcel proof to IPFS.
+          </p>
+        </div>
+
+        {/* Receiver Email */}
+        <div>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
+            Receiver Email Address
+          </label>
+          <input
+            type="email"
+            required
+            value={formData.receiverEmail}
+            onChange={(e) =>
+              setFormData({ ...formData, receiverEmail: e.target.value })
+            }
+            placeholder="receiver@example.com"
+            className="w-full p-3 border border-slate-300 rounded-xl outline-none text-slate-900 bg-slate-50 focus:bg-white focus:border-teal-500 transition-all text-sm"
+          />
+        </div>
+
+        {/* Receiver Phone */}
+        <div>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
+            Receiver Phone Number
+          </label>
+          <input
+            type="tel"
+            required
+            value={formData.receiverPhone}
+            onChange={(e) =>
+              setFormData({ ...formData, receiverPhone: e.target.value })
+            }
+            placeholder="+234..."
+            className="w-full p-3 border border-slate-300 rounded-xl outline-none text-slate-900 bg-slate-50 focus:bg-white focus:border-teal-500 transition-all text-sm"
+          />
+        </div>
+
+        {/* Courier Fee */}
+        <div>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
+            Courier Delivery Fee (ETH)
+          </label>
+          <input
+            type="text"
+            required
+            value={formData.courierFeeEth}
+            onChange={(e) =>
+              setFormData({ ...formData, courierFeeEth: e.target.value })
+            }
+            placeholder="0.01"
+            className="w-full p-3 border border-slate-300 rounded-xl outline-none text-slate-900 bg-slate-50 focus:bg-white focus:border-teal-500 transition-all text-sm"
+          />
+        </div>
+
+        {/* Package Photo Upload Section for Pinata IPFS */}
+        <div>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
+            Package Proof Photo (Pin to IPFS)
+          </label>
+          <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center bg-slate-50 hover:bg-slate-100 transition relative cursor-pointer">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleFileChange}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            />
+
+            {previewUrl ? (
+              <div className="flex items-center gap-4 text-left">
+                <img
+                  src={previewUrl}
+                  alt="Package Preview"
+                  className="w-16 h-16 object-cover rounded-lg border border-slate-300"
+                />
+                <div>
+                  <p className="text-xs font-bold text-slate-800 truncate max-w-[200px]">
+                    {selectedFile?.name}
+                  </p>
+                  <p className="text-[10px] text-teal-600 font-semibold mt-0.5">
+                    Ready to pin to Pinata IPFS
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center py-3 text-slate-400">
+                <Upload size={24} className="mb-1 text-teal-600" />
+                <span className="text-xs font-bold text-slate-700">
+                  Upload Package Photo
+                </span>
+                <span className="text-[10px] text-slate-400 mt-0.5">
+                  PNG, JPG, or WEBP up to 10MB
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Submit Button */}
+        <button
+          type="submit"
+          disabled={isSubmittingTx}
+          className="w-full bg-slate-950 hover:bg-slate-900 text-white font-bold py-3.5 rounded-xl text-sm shadow transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+        >
+          {isSubmittingTx ? (
+            <>
+              <Loader2 size={18} className="animate-spin text-teal-400" />
+              <span>Confirming on Blockchain...</span>
+            </>
+          ) : (
+            "Create & Deploy Delivery Escrow"
+          )}
+        </button>
+      </form>
+    </div>
   );
 }

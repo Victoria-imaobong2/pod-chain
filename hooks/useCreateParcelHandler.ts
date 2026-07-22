@@ -20,8 +20,11 @@ export function useCreateParcelHandler() {
   const { isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
 
-  const handleCreateParcel = async (data: ParcelFormInputs) => {
-
+  const handleCreateParcel = async (
+    data: ParcelFormInputs,
+    file?: File | null
+  ) => {
+//guardchecking if wallet was connected successfully
     if (!isConnected) {
       // Automatically trigger RainbowKit wallet modal if not connected
       if (openConnectModal) {
@@ -33,15 +36,35 @@ export function useCreateParcelHandler() {
 
     }
     try {
-      // 1. Generate a cryptographically secure 6-digit PIN
+      let targetIpfsHash = data.ipfsHash || "QmSampleIpfsHashFromPinata";
+    
+      //2. Upload file to Pinata IPFS if provided
+      if(file){
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const pinataRes = await fetch("/api/pinata", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!pinataRes.ok){
+          throw new Error("Failed to upload package photo to Pinata IPFS")
+        }
+
+        const pinataData = await pinataRes.json();
+        targetIpfsHash = pinataData.ipfsHash || pinataData.IpfsHash;
+      }
+
+      // Generate a cryptographically secure 6-digit PIN
       const array = new Uint32Array(1);
       crypto.getRandomValues(array);
       const rawPin = (100000 + (array[0] % 900000)).toString();
 
-      // 2. Hash it locally using viem
+      // Hash it locally using viem
       const confirmationHash = keccak256(encodePacked(["string"], [rawPin]));
 
-      // 3. Execute Smart Contract Transaction via Wagmi
+      // Execute Smart Contract Transaction via Wagmi
       const txHash = await writeContractAsync({
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: DeliveryEscrowABI,
@@ -52,7 +75,7 @@ export function useCreateParcelHandler() {
 
       console.log("Transaction sent! Hash:", txHash);
 
-      // 4. Send plain PIN and details to FastAPI backend
+      // Send plain PIN and details to FastAPI backend
       const backendResponse = await fetch("http://localhost:8000/api/v1/parcels/notify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -61,6 +84,8 @@ export function useCreateParcelHandler() {
           receiverEmail: data.receiverEmail,
           receiverPhone: data.receiverPhone,
           pin: rawPin,
+          ipfsHash: targetIpfsHash,
+          txHash,
         }),
       });
 
@@ -69,7 +94,12 @@ export function useCreateParcelHandler() {
       }
 
       const backendData = await backendResponse.json();
-      return { success: true, txHash, qrCodeUrl: backendData.qrCodeUrl };
+      return { 
+        success: true, 
+        txHash, 
+        ipfsHash: targetIpfsHash,
+        pin: rawPin,
+        qrCodeUrl: backendData.qrCodeUrl };
 
     } catch (error) {
       console.error("Error creating parcel:", error);

@@ -1,4 +1,5 @@
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
@@ -11,7 +12,7 @@ from models import UserModel, UserRole
 from auth_utils import verify_password, hash_password, create_access_token
 
 #For automatic generation of Database tables
-Base.metadata.create_all(bind=engine)
+
 
 app = FastAPI(title="PodChain Auth Service", description="API for PodChain Application", version="1.0.0")
 
@@ -68,7 +69,7 @@ def login(credentials: LoginRequest, db: Session = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password, retry with correct email or password."
         )
-    # putting role and id into JWT token
+    # putting role and icd into JWT token
     token_data = {
         "sub": user.email,
         "id": user.id,

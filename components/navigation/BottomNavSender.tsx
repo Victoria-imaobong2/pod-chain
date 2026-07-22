@@ -17,15 +17,14 @@ export default function BottomNavSender({ onCreateClick }: SenderNavProps) {
       
       <Link href="/dashboard" className={`flex flex-col items-center gap-0.5 text-[10px] font-black uppercase tracking-widest ${pathname === '/dashboard' ? 'text-teal-600' : 'text-slate-400'}`}>
         <Home size={20} />
-        <span>Vendor Hub</span>
+        <span>Hub</span>
       </Link>
 
-      <button type='button'
-        onClick={onCreateClick}
+      <Link href="/create-parcel"
         className="w-12 h-12 bg-teal-600 hover:bg-teal-700 text-white rounded-2xl flex items-center justify-center shadow-md shadow-teal-600/20 active:scale-95 transition-all -mt-6 border-4 border-slate-50"
       >
         <Plus size={24} className="font-black" />
-      </button>
+      </Link>
 
       <Link href="/verify" className={`flex flex-col items-center gap-0.5 text-[10px] font-black uppercase tracking-widest ${pathname === '/verify' ? 'text-teal-600' : 'text-slate-400'}`}>
         <ShieldCheck size={20} />

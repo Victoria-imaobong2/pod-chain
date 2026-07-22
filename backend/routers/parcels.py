@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query, status
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import datetime
-from app.auth import get_current_user
+from auth_utils import get_current_user
 import qrcode
 import io
 import base64
