@@ -16,7 +16,7 @@ import '@rainbow-me/rainbowkit/styles.css';
 const config = getDefaultConfig({
     appName: 'podChain',
     projectId: 'ff747dfbea36ec05c5b46a631150a909',
-    chains: [baseSepolia, base, hardhat],
+    chains: [hardhat, baseSepolia, base],
     ssr: true,
 });
 const queryClient = new QueryClient();
@@ -29,10 +29,10 @@ export function Web3Provider({ children } : { children: React.ReactNode }) {
                 theme={darkTheme({
               accentColor: "#d94488",
              })}
->
-                    {children}
-                </RainbowKitProvider>
-            </QueryClientProvider>
-            </WagmiProvider>
+            >
+                {children}
+            </RainbowKitProvider>
+        </QueryClientProvider>
+    </WagmiProvider>
     );
 }
