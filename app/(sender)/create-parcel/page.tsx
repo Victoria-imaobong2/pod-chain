@@ -2,10 +2,24 @@
 
 import { useState } from "react";
 import { useCreateParcelHandler } from "../../../hooks/useCreateParcelHandler";
-import { Upload, Image as ImageIcon, Loader2 } from "lucide-react";
+import { Upload, Loader2, Wallet } from "lucide-react";
+import { useConnect, useAccount, useDisconnect } from 'wagmi';
 
+declare global {
+  interface Window {
+    ethereum?: {
+      isMetaMask?: boolean;
+      request: (args: { method: string; params?: unknown[] | object }) => Promise<unknown>;
+      on?: (eventName: string, handler: (...args: unknown[]) => void) => void;
+      removeListener?: (eventName: string, handler: (...args: unknown[]) => void) => void;
+    };
+  }
+}
 export default function CreateParcelPage() {
   const { handleCreateParcel, isSubmittingTx } = useCreateParcelHandler();
+  const { connectors, connect } = useConnect();
+  const { isConnected, address } = useAccount();
+  const { disconnect } = useDisconnect();
 
   const [formData, setFormData] = useState({
     receiverEmail: "",
@@ -18,6 +32,15 @@ export default function CreateParcelPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
+  // Find the browser extension / MetaMask connector directly
+  // Look for MetaMask specifically by ID, name, or generic injected type
+const metaMaskConnector = connectors.find(
+  (c) => 
+    c.id === 'io.metamask' || 
+    c.id === 'metaMask' || 
+    c.id === 'injected' || 
+    c.name.toLowerCase().includes('metamask')
+) || connectors[0]; // Fall back to first available injected connector
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -29,7 +52,6 @@ export default function CreateParcelPage() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      // Pass both form inputs AND the selected package photo to the handler
       const result = await handleCreateParcel(formData, selectedFile);
 
       if (result?.success) {
@@ -54,7 +76,51 @@ export default function CreateParcelPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-8 flex items-center justify-center">
+    <div className="min-h-screen bg-slate-50 p-4 md:p-8 flex flex-col items-center justify-center space-y-4">
+      
+      {/* Wallet Connection Status Bar */}
+      <div className="w-full max-w-lg p-4 bg-white rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Wallet className="w-5 h-5 text-teal-600" />
+          {isConnected ? (
+            <span className="text-xs font-mono font-bold text-slate-800">
+              {address?.slice(0, 6)}...{address?.slice(-4)}
+            </span>
+          ) : (
+            <span className="text-xs font-medium text-slate-500">
+              Wallet Disconnected
+            </span>
+          )}
+        </div>
+
+        {isConnected ? (
+          <button
+            type="button"
+            onClick={() => disconnect()}
+            className="text-xs text-red-500 hover:text-red-600 font-bold px-3 py-1.5 rounded-lg border border-red-100 hover:bg-red-50 transition"
+          >
+            Disconnect
+          </button>
+        ) : (
+          <button
+  type="button"
+  onClick={() => {
+    if (metaMaskConnector) {
+      connect({ connector: metaMaskConnector });
+    } else {
+      // Fallback: trigger standard browser window.ethereum directly
+      window.ethereum?.request({ method: 'eth_requestAccounts' })
+        .catch(() => alert('MetaMask extension not detected in browser'));
+    }
+  }}
+  className="text-xs bg-pink-600 hover:bg-pink-700 text-white font-bold px-4 py-2 rounded-xl transition shadow-sm"
+>
+  Connect Wallet
+</button>
+        )}
+      </div>
+
+      {/* Main Form */}
       <form
         onSubmit={onSubmit}
         className="w-full max-w-lg p-6 md:p-8 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-5"

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import { useState  }from "react";
 import {
     getDefaultConfig,
     RainbowKitProvider,
@@ -10,29 +10,35 @@ import {
 import { WagmiProvider } from "wagmi";
 import {base, baseSepolia, hardhat} from 'wagmi/chains';
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
-
+import { http } from 'viem';
 import '@rainbow-me/rainbowkit/styles.css';
 
 const config = getDefaultConfig({
-    appName: 'podChain',
-    projectId: 'ff747dfbea36ec05c5b46a631150a909',
-    chains: [hardhat, baseSepolia, base],
-    ssr: true,
+  appName: 'podChain',
+  projectId: 'ff747dfbea36ec05c5b46a631150a909',
+  chains: [hardhat, baseSepolia, base],
+  ssr: false,
+  transports: {
+    [hardhat.id]: http('http://127.0.0.1:8545'),
+    [baseSepolia.id]: http(),
+    [base.id]: http(),
+  },
 });
-const queryClient = new QueryClient();
 
-export function Web3Provider({ children } : { children: React.ReactNode }) {
-    return (
-        <WagmiProvider config={config}>
-            <QueryClientProvider client={queryClient}>
-                <RainbowKitProvider 
-                theme={darkTheme({
-              accentColor: "#d94488",
-             })}
-            >
-                {children}
-            </RainbowKitProvider>
-        </QueryClientProvider>
+export function Web3Provider({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(() => new QueryClient());
+
+  return (
+    <WagmiProvider config={config}>
+      <QueryClientProvider client={queryClient}>
+        <RainbowKitProvider 
+          theme={darkTheme({
+            accentColor: "#d94488",
+          })}
+        >
+          {children}
+        </RainbowKitProvider>
+      </QueryClientProvider>
     </WagmiProvider>
-    );
+  );
 }

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import StatusBadge, { StatusType } from "@/components/shared/StatusBadge";
 import BottomNavSender from "@/components/navigation/BottomNavSender";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 
 interface DeliveryItem {
   id: string;
@@ -77,7 +78,8 @@ export default function SenderDashboard() {
     }
     return INITIAL_DELIVERIES;
   });
-
+  
+  
   // Keep filtered list in sync with main deliveries
   const [filteredDeliveries, setFilteredDeliveries] = useState<DeliveryItem[]>(recentDeliveries);
 
@@ -176,6 +178,8 @@ export default function SenderDashboard() {
           Your Blockchain-enabled Proof of Delivery framework
         </p>
       </header>
+
+      <ConnectButton />
 
       {/* METRICS CARDS GRID */}
       <section className="grid gap-4 grid-cols-1 md:grid-cols-3 mb-8">

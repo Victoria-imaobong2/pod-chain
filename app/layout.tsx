@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   description: "A secure Blockchain-basedProof of Delivery system foy your logistics",
   manifest: "/manifest.json",
   keywords: ["POD Chain", "Proof of Delivery", "Blockchain", "Logistics"],
-  authors: [{ name: "Victoria Imaobong", url: "https://github.com/victoria-imaobong"  }],
+  authors: [{ name: "Victoria Imaobong", url: "https://github.com/victoria-imaobong2"  }],
 };
 
 export default function RootLayout({

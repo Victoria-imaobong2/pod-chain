@@ -26,7 +26,7 @@ export default defineConfig({
     hardhat: {
       type: "edr-simulated",
       chainType: "l1",
-      chainId: 1337, // Explicitly sets the local dev node to Chain ID 1337
+      chainId: 31337, // Explicitly sets the local dev node to Chain ID 31337
     },
     hardhatMainnet: {
       type: "edr-simulated",
