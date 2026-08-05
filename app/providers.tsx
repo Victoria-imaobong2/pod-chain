@@ -17,7 +17,7 @@ const config = getDefaultConfig({
   appName: 'podChain',
   projectId: 'ff747dfbea36ec05c5b46a631150a909',
   chains: [hardhat, baseSepolia, base],
-  ssr: false,
+  ssr: true,
   transports: {
     [hardhat.id]: http('http://127.0.0.1:8545'),
     [baseSepolia.id]: http(),
@@ -27,6 +27,7 @@ const config = getDefaultConfig({
 
 export function Web3Provider({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
+  const [mounted, setMounted] = useState(false);
 
   return (
     <WagmiProvider config={config}>

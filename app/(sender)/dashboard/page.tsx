@@ -225,7 +225,7 @@ export default function SenderDashboard() {
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
               Active Deliveries
             </p>
-            <h3 className="text-3xl font-black tracking-tight text-slate-900 mt-1">
+            <h3 suppressHydrationWarning className="text-3xl font-black tracking-tight text-slate-900 mt-1">
               {
                 recentDeliveries.filter(
                   (d) => d.status === "InTransit" || d.status === "Created"

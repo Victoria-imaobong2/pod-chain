@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useConnect, useAccount, useDisconnect } from "wagmi";
 import {
   LayoutDashboard,
   ShieldCheck,
@@ -13,11 +14,34 @@ import {
   ArrowRight,
   User,
 } from "lucide-react";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
+
 
 export default function HomePage() {
   const router = useRouter();
 
+  const { connectors, connect } = useConnect();
+  const { isConnected, address } = useAccount();
+  const { disconnect } = useDisconnect();
+
+  // Find the browser extension / MetaMask connector directly
+  // Look for MetaMask specifically by ID, name, or generic injected type
+  const metaMaskConnector = connectors.find(
+    (c) =>
+      c.id === "io.metamask" ||
+      c.id === "metaMask" ||
+      c.id === "injected" ||
+      c.name.toLowerCase().includes("metamask")
+  ) || connectors[0]; // Fall back to first available injected connector
+
+  const handleConnectWallet = async () => {
+    if (!isConnected) {
+      try {
+        await connect({ connector: metaMaskConnector });
+      } catch (error) {
+        console.error("Error connecting wallet:", error);
+      }
+      }
+    }
   // Modal State
   const [isSignupOpen, setIsSignupOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -51,12 +75,18 @@ export default function HomePage() {
 
     switch (selectedRole) {
       case "sender":
+        if (!isConnected) {
+          handleConnectWallet(); // Trigger MetaMask prompt if not connected yet
+        }
         router.push("/dashboard");
         break;
       case "receiver":
         router.push("/receiver");
         break;
       case "courier":
+        if (!isConnected) {
+          handleConnectWallet(); // Trigger MetaMask prompt if not connected yet
+        }
         router.push("/scan");
         break;
     }
@@ -117,6 +147,16 @@ export default function HomePage() {
 
   return (
     <>
+
+    {/* TOP NAVIGATION BAR */}
+    <header className="w-full bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between text-white">
+      <div className="flex items-center gap-2 font-bold text-lg">
+        <ShieldCheck className="text-teal-400" size={22} />
+        <span>POD Chain</span>
+      </div>
+
+     
+    </header>
       <main className="min-h-screen bg-slate-50 flex flex-col lg:flex-row">
         {/* LEFT PANEL */}
         <section className="bg-slate-900 text-white w-full lg:w-5/12 xl:w-4/12 flex items-center p-10">
@@ -138,11 +178,12 @@ export default function HomePage() {
 
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
               {navHome.map((item) => (
-                <div
-                  key={item.role}
-                  onClick={() => handleRoleClick(item.role)}
-                  className="flex flex-col justify-between rounded-2xl border bg-white p-6 shadow-sm hover:border-teal-500 hover:shadow-md transition cursor-pointer"
-                >
+                <button
+      type="button"
+      key={item.role}
+      onClick={() => handleRoleClick(item.role)}
+      className="flex flex-col justify-between rounded-2xl border bg-white p-6 shadow-sm hover:border-teal-500 hover:shadow-md transition cursor-pointer text-left w-full"
+    >
                   <div>
                     <div className="flex items-center gap-3 mb-4">
                       <div className="rounded-xl bg-teal-50 p-3">
@@ -170,7 +211,7 @@ export default function HomePage() {
                     <LogIn size={18} />
                     Log In as {item.name.split(" ")[0]}
                   </button>
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -382,7 +423,29 @@ export default function HomePage() {
                   <span className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-700">
                     Connect Web3 Wallet (Optional)
                   </span>
-                  <ConnectButton />
+
+                  {isConnected ? (
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-xs bg-slate-800 text-teal-400 px-3 py-1.5 rounded-lg border border-slate-700">
+                        Connected: {address?.slice(0, 6)}...{address?.slice(-4)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => disconnect()}
+                        className="text-xs text-red-500 hover:text-red-300 font-semibold px-2.5 py-1.5 border border-red-500/30 rounded-lg hover:bg-red-500/10 transition"
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleConnectWallet}
+                      className="text-xs bg-pink-600 hover:bg-pink-700 text-white font-bold px-4 py-2 rounded-xl transition shadow-sm"
+                    >
+                      Connect Wallet
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -413,4 +476,4 @@ export default function HomePage() {
       )}
     </>
   );
-}
+ }
