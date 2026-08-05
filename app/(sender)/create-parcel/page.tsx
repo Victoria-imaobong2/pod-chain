@@ -17,6 +17,7 @@ declare global {
 }
 export default function CreateParcelPage() {
   const { handleCreateParcel, isSubmittingTx } = useCreateParcelHandler();
+  const [isProcessing, setIsProcessing] = useState(false);
   const { connectors, connect } = useConnect();
   const { isConnected, address } = useAccount();
   const { disconnect } = useDisconnect();
@@ -26,11 +27,14 @@ export default function CreateParcelPage() {
     receiverPhone: "",
     courierFeeEth: "0.01",
     ipfsHash: "",
+    contentsName: "",
+    destinationAddress: "",
   });
 
   // State for image upload
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
 
   // Find the browser extension / MetaMask connector directly
   // Look for MetaMask specifically by ID, name, or generic injected type
@@ -51,7 +55,11 @@ const metaMaskConnector = connectors.find(
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isProcessing || isSubmittingTx) return; // Guard clause against double clicks
+    setIsProcessing(true);
     try {
+      
       const result = await handleCreateParcel(formData, selectedFile);
 
       if (result?.success) {
@@ -61,17 +69,22 @@ const metaMaskConnector = connectors.find(
 
         // Reset form
         setFormData({
-          receiverEmail: "",
-          receiverPhone: "",
-          courierFeeEth: "0.01",
-          ipfsHash: "",
-        });
+  receiverEmail: "",
+  receiverPhone: "",
+  courierFeeEth: "0.01",
+  ipfsHash: "",
+  contentsName: "",
+  destinationAddress: "",
+});
         setSelectedFile(null);
         setPreviewUrl(null);
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to create parcel. Check console for details.");
+      const message = err instanceof Error ? err.message : "Failed to create parcel. Please try again.";
+      alert(message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -231,13 +244,13 @@ const metaMaskConnector = connectors.find(
         {/* Submit Button */}
         <button
           type="submit"
-          disabled={isSubmittingTx}
+          disabled={isProcessing || isSubmittingTx}
           className="w-full bg-slate-950 hover:bg-slate-900 text-white font-bold py-3.5 rounded-xl text-sm shadow transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
         >
-          {isSubmittingTx ? (
+          {isProcessing ||isSubmittingTx ? (
             <>
               <Loader2 size={18} className="animate-spin text-teal-400" />
-              <span>Confirming on Blockchain...</span>
+              <span> Processing and Deploying...</span>
             </>
           ) : (
             "Create & Deploy Delivery Escrow"

@@ -1,7 +1,6 @@
-import { NextResponse, NextRequest } from "next/server";
-import { pinata } from "@/utils/config";
+import { NextResponse } from "next/server";
 
-export async function POST(request: NextRequest){
+export async function POST(request: Request){
     try {
         const data = await request.formData();
         const file: File | null = data.get("file") as unknown as File;
@@ -10,14 +9,33 @@ export async function POST(request: NextRequest){
             return NextResponse.json({ error: "No file provided" }, { status: 400 });
         }
 
-        const uploadResponse = await pinata.upload.public.file(file);
+        const pinataFormData = new FormData();
+        pinataFormData.append("file", file);
 
-        return NextResponse.json({ cid: uploadResponse.cid }, { status: 200 });
-    } catch (error) {
-        console.error("IPFS Upload Error: ", error);
-        return NextResponse.json(
-            { error: "Internal Server Error during IPFS pinning" },
-            { status: 500 }
-        );
+        const pinataMetaData = JSON.stringify({
+            name: file.name,
+        });
+        pinataFormData.append("pinataMetadata", pinataMetaData);
+
+       const res = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.PINATA_JWT}`,
+      },
+      body: pinataFormData,
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json();
+      return NextResponse.json(errorData, { status: res.status });
     }
+
+    const resData = await res.json();
+    return NextResponse.json({ IpfsHash: resData.IpfsHash }, { status: 200 });
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: (error as Error).message || "Failed to upload to Pinata" },
+      { status: 500 }
+    );
+  }
 }

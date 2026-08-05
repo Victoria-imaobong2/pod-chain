@@ -9,10 +9,10 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set.")
-
+SQLALCHEMY_DATABASE_URL = DATABASE_URL
 # 1. Create the ASYNC engine (Handles asyncpg driver)
 engine = create_async_engine(
-    DATABASE_URL,
+    SQLALCHEMY_DATABASE_URL,
     echo=True, # Set to False in production if you want less log output
 )
 
