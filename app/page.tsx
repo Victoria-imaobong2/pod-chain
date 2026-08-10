@@ -15,7 +15,6 @@ import {
   User,
 } from "lucide-react";
 
-
 export default function HomePage() {
   const router = useRouter();
 
