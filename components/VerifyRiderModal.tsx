@@ -126,7 +126,7 @@ export default function VerifyRiderModal({ onClose }: VerifyRiderModalProps) {
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="e.g. 07039102053, Chidi, or POD-001"
+              placeholder="e.g. 080000000000, Chidi, or POD-001"
               required
               className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-teal-500 outline-none transition"
             />

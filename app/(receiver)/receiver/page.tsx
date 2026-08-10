@@ -5,11 +5,14 @@ import { Package, Bell, MapPin, QrCode, X, Navigation } from 'lucide-react';
 import StatusBadge from '@/components/shared/StatusBadge';
 import BottomNavReceiver from '@/components/navigation/BottomNavReceiver';
 import EditReceiverProfileModal, { ReceiverProfile } from "@/components/EditReceiverProfileModal";
+import CourierProximityModal from "@/components/CourierProximityModal";
 import dynamic from "next/dynamic";
 
 const ReceiverKeyModal = dynamic(() => import("@/components/ReceiverKeyModal"), { ssr: false });
 const VerifyRiderModal = dynamic(() => import("@/components/VerifyRiderModal"), { ssr: false });
 
+
+// 1. Interfaces declared at module top-level
 export interface Shipment {
   id: string;
   sender?: string;
@@ -19,58 +22,101 @@ export interface Shipment {
   hash?: string;
   pin?: string;
   address?: string;
+  courierName?: string;
+  courierPhone?: string;
 }
 
-interface NotificationItem {
-  id: number;
-  type: 'proximity' | 'dispatch';
+export interface DynamicNotification {
+  id: string;
+  type: 'creation' | 'proximity' | 'delivered';
   message: string;
+  timestamp: string;
   active: boolean;
 }
 
+// 2. Helper functions declared at module top-level
+const getNotificationItemStyle = (type: 'creation' | 'proximity' | 'delivered') => {
+  if (type === "proximity") return "bg-amber-50/70 border-amber-200 text-amber-900";
+  if (type === "delivered") return "bg-emerald-50/70 border-emerald-200 text-emerald-900";
+  return "bg-teal-50/70 border-teal-200 text-teal-900";
+};
+
+const DEFAULT_PROFILE: ReceiverProfile = {
+  name: "Victoria-Imaobong Solomon",
+  phone: "08123456789",
+  email: "receiver@podchain.com",
+  address: "No 04 Set Address Road, LGA, State, Nigeria.",
+};
+
+// 3. Single ReceiverDashboard component export
 export default function ReceiverDashboard() {
-  const [shipments, setShipments] = useState<Shipment[]>(() => {
+  const [isMounted] = useState(true);
+  const [shipments, setShipments] = useState<Shipment[]>(() =>{
     if (typeof window === "undefined") return [];
     return JSON.parse(localStorage.getItem("pod_parcels") || "[]");
   });
-  
-  const [notifications, setNotifications] = useState<NotificationItem[]>([
-    { id: 1, type: 'proximity', message: 'Rider is nearby! Active parcel is less than 1km away.', active: true },
-    { id: 2, type: 'dispatch', message: 'New consignment initialized: Escrow locked on-chain.', active: true }
-  ]);
 
   const [profile, setProfile] = useState<ReceiverProfile>(() => {
-    if (typeof window === "undefined") {
-      return {
-        name: "Victoria-Imaobong Solomon",
-        phone: "08123456789",
-        email: "receiver@email.com",
-        address: "No 04 Set Address Road, LGA, State, Nigeria.",
-      };
-    }
+    if (typeof window === "undefined") return DEFAULT_PROFILE;
     const saved = localStorage.getItem("pod_receiver_profile");
-    return saved
-      ? JSON.parse(saved)
-      : {
-          name: "Victoria-Imaobong Solomon",
-          phone: "08123456789",
-          email: "receiver@email.com",
-          address: "No 04 Set Address Road, LGA, State, Nigeria.",
-        };
+    if (!saved) return DEFAULT_PROFILE;
+    try {
+      return JSON.parse(saved);
+    } catch {
+      return DEFAULT_PROFILE;
+    }
   });
-
+  const [notifications, setNotifications] = useState<DynamicNotification[]>([]);
+  
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isTrackModalOpen, setIsTrackModalOpen] = useState(false);
   const [isVerifyRiderOpen, setIsVerifyRiderOpen] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [isProximityModalOpen, setIsProximityModalOpen] = useState(false);
   const [selectedKeyParcel, setSelectedKeyParcel] = useState<Shipment | null>(null);
   const [inputHash, setInputHash] = useState('');
 
-  const loadShipments = useCallback(() => {
-    const localData = JSON.parse(localStorage.getItem("pod_parcels") || "[]");
-    setShipments(localData);
+  const syncDynamicNotifications = useCallback((currentShipments: Shipment[]) => {
+    const derivedAlerts: DynamicNotification[] = [];
+
+    currentShipments.forEach((s) => {
+      if (s.status === "Delivered") {
+        derivedAlerts.push({
+          id: `notif-del-${s.id}`,
+          type: "delivered",
+          message: `Package ${s.id} (${s.item || "Consignment"}) has been verified and delivered!`,
+          timestamp: s.timestamp || "Just now",
+          active: true,
+        });
+      } else if (s.status === "InTransit") {
+        derivedAlerts.push({
+          id: `notif-prox-${s.id}`,
+          type: "proximity",
+          message: `Rider is nearby with ${s.id}! Approaching destination point.`,
+          timestamp: s.timestamp || "Active",
+          active: true,
+        });
+      } else {
+        derivedAlerts.push({
+          id: `notif-created-${s.id}`,
+          type: "creation",
+          message: `New package ${s.id} initialized in escrow ledger.`,
+          timestamp: s.timestamp || "Recent",
+          active: true,
+        });
+      }
+    });
+
+    setNotifications(derivedAlerts);
   }, []);
 
+  const loadShipments = useCallback(() => {
+    const localData: Shipment[] = JSON.parse(localStorage.getItem("pod_parcels") || "[]");
+    setShipments(localData);
+    syncDynamicNotifications(localData);
+  }, [syncDynamicNotifications]);
+
+  
   useEffect(() => {
     window.addEventListener("storage_updated", loadShipments);
     window.addEventListener("focus", loadShipments);
@@ -81,10 +127,14 @@ export default function ReceiverDashboard() {
     };
   }, [loadShipments]);
 
-  const activeAlertsCount = notifications.filter(n => n.active).length;
+  if (!isMounted) {
+    return null;
+  }
 
-  const dismissNotification = (id: number) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, active: false } : n));
+  const activeAlertsCount = notifications.filter((n) => n.active).length;
+
+  const dismissNotification = (id: string) => {
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, active: false } : n)));
   };
 
   const handleSaveProfile = (updated: ReceiverProfile) => {
@@ -104,16 +154,19 @@ export default function ReceiverDashboard() {
       id: `POD-${String(shipments.length + 1).padStart(3, "0")}`,
       sender: "External SME Merchant",
       item: "Synced Escrow Parcel",
-      status: "Created",
+      status: "InTransit",
       timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
       hash: inputHash.length > 10 ? inputHash.substring(0, 6) + "..." + inputHash.substring(inputHash.length - 4) : inputHash,
       pin: generateSecurePin(),
-      address: profile.address
+      address: profile.address,
+      courierName: "Unassigned Rider",
+      courierPhone: "Pending Acceptance"
     };
 
     const updated = [newTrack, ...shipments];
     localStorage.setItem("pod_parcels", JSON.stringify(updated));
     setShipments(updated);
+    syncDynamicNotifications(updated);
     setInputHash('');
     setIsTrackModalOpen(false);
   };
@@ -143,17 +196,18 @@ export default function ReceiverDashboard() {
           {isNotificationOpen && (
             <div className="absolute right-0 mt-3 w-80 md:w-96 bg-white border border-slate-200 rounded-2xl shadow-xl p-4 z-50 space-y-3 animate-in fade-in slide-in-from-top-4 duration-200">
               <div className="flex justify-between items-center border-b pb-2">
-                <h3 className="font-extrabold text-slate-900 text-sm">Live Proximity Alerts</h3>
+                <h3 className="font-extrabold text-slate-900 text-sm">State Change Alerts</h3>
                 <span className="text-[10px] font-bold bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full uppercase">Realtime</span>
               </div>
-              {notifications.filter(n => n.active).length === 0 ? (
+              {notifications.filter((n) => n.active).length === 0 ? (
                 <p className="text-xs text-slate-400 py-4 text-center">No active package updates right now.</p>
               ) : (
-                notifications.filter(n => n.active).map(n => (
-                  <div key={n.id} className={`p-3 rounded-xl border flex gap-3 items-start ${n.type === 'proximity' ? 'bg-amber-50/70 border-amber-200 text-amber-900' : 'bg-teal-50/70 border-teal-200 text-teal-900'}`}>
+                notifications.filter((n) => n.active).map((n) => (
+                  <div key={n.id} className={`p-3 rounded-xl border flex gap-3 items-start ${getNotificationItemStyle(n.type)}`}>
                     {n.type === 'proximity' ? <Navigation size={16} className="text-amber-600 shrink-0 mt-0.5 animate-pulse" /> : <Package size={16} className="text-teal-600 shrink-0 mt-0.5" />}
                     <div className="flex-1">
                       <p className="text-xs font-semibold leading-relaxed">{n.message}</p>
+                      <span className="text-[10px] text-slate-400 font-mono mt-1 block">{n.timestamp}</span>
                     </div>
                     <button type="button" onClick={() => dismissNotification(n.id)} className="text-slate-400 hover:text-slate-600 shrink-0 cursor-pointer">
                       <X size={14} />
@@ -284,7 +338,14 @@ export default function ReceiverDashboard() {
         />
       )}
 
-      <BottomNavReceiver onCreateClick={() => setIsTrackModalOpen(true)} />
+      {isProximityModalOpen && (
+        <CourierProximityModal
+          activeParcels={shipments.filter((s) => s.status !== "Delivered")}
+          onClose={() => setIsProximityModalOpen(false)}
+        />
+      )}
+
+      <BottomNavReceiver onCreateClick={() => setIsProximityModalOpen(true)} />
     </div>
   );
 }

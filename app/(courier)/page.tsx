@@ -109,6 +109,13 @@ export default function CourierDashboard() {
     return "bg-blue-50 text-blue-800 border-blue-200";
   };
 
+  const getTabClass = (isSelected: boolean) => {
+  if (isSelected) {
+    return "bg-slate-900 text-white font-bold";
+  }
+  return "bg-slate-200 text-slate-600 hover:bg-slate-300";
+};
+
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-8 pb-32 max-w-7xl mx-auto font-sans antialiased">
       <header className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-200 pb-6 mb-6 gap-4">
@@ -189,28 +196,22 @@ export default function CourierDashboard() {
           </h2>
 
           <div className="flex gap-2 text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => setActiveTab("active")}
-              className={`px-3.5 py-1.5 rounded-full transition cursor-pointer ${
-                activeTab === "active"
-                  ? "bg-slate-900 text-white font-bold"
-                  : "bg-slate-200 text-slate-600 hover:bg-slate-300"
-              }`}
-            >
-              Pending Delivery ({activeParcels.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("completed")}
-              className={`px-3.5 py-1.5 rounded-full transition cursor-pointer ${
-                activeTab === "completed"
-                  ? "bg-slate-900 text-white font-bold"
-                  : "bg-slate-200 text-slate-600 hover:bg-slate-300"
-              }`}
-            >
-              Completed ({completedParcels.length})
-            </button>
+            
+           <button
+  type="button"
+  onClick={() => setActiveTab("active")}
+  className={`px-3.5 py-1.5 rounded-full transition cursor-pointer ${getTabClass(activeTab === "active")}`}
+>
+  Pending Delivery ({activeParcels.length})
+</button>
+
+<button
+  type="button"
+  onClick={() => setActiveTab("completed")}
+  className={`px-3.5 py-1.5 rounded-full transition cursor-pointer ${getTabClass(activeTab === "completed")}`}
+>
+  Completed ({completedParcels.length})
+</button>
           </div>
         </div>
 
