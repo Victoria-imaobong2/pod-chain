@@ -6,9 +6,13 @@ import { Package, Plus, QrCode, LogOut } from "lucide-react";
 
 interface BottomNavReceiverProps {
   readonly onCreateClick: () => void;
+  readonly onVerifyRiderClick: () => void;
 }
 
-export default function BottomNavReceiver({ onCreateClick }: BottomNavReceiverProps) {
+export default function BottomNavReceiver({
+  onCreateClick,
+  onVerifyRiderClick,
+}: BottomNavReceiverProps) {
   const handleLogout = () => {
     localStorage.removeItem("pod_user_role");
     window.location.href = "/";
@@ -16,7 +20,10 @@ export default function BottomNavReceiver({ onCreateClick }: BottomNavReceiverPr
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 py-2.5 px-6 flex justify-around items-center z-40 shadow-lg">
-      <Link href="/receiver" className="flex flex-col items-center gap-0.5 text-slate-600 hover:text-teal-600 font-bold text-[10px] uppercase tracking-wider">
+      <Link
+        href="/receiver"
+        className="flex flex-col items-center gap-0.5 text-slate-600 hover:text-teal-600 font-bold text-[10px] uppercase tracking-wider"
+      >
         <Package size={20} />
         <span>My Packages</span>
       </Link>
@@ -30,10 +37,15 @@ export default function BottomNavReceiver({ onCreateClick }: BottomNavReceiverPr
         <Plus size={24} className="font-black text-teal-400" />
       </button>
 
-      <Link href="/receiver" className="flex flex-col items-center gap-0.5 text-slate-600 hover:text-teal-600 font-bold text-[10px] uppercase tracking-wider">
+      {/* Verify Rider Button */}
+      <button
+        type="button"
+        onClick={onVerifyRiderClick}
+        className="flex flex-col items-center gap-0.5 text-slate-600 hover:text-teal-600 font-bold text-[10px] uppercase tracking-wider transition cursor-pointer"
+      >
         <QrCode size={20} />
         <span>Verify Rider</span>
-      </Link>
+      </button>
 
       <button
         type="button"

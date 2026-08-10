@@ -345,7 +345,9 @@ export default function ReceiverDashboard() {
         />
       )}
 
-      <BottomNavReceiver onCreateClick={() => setIsProximityModalOpen(true)} />
+      <BottomNavReceiver onCreateClick={() => setIsProximityModalOpen(true)}
+      onVerifyRiderClick={() => setIsVerifyRiderOpen(true)}
+       />
     </div>
   );
 }
