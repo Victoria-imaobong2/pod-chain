@@ -11,13 +11,13 @@ interface BottomNavProps {
 
 export default function BottomNav({ onCreateClick }: BottomNavProps) {
   const pathname = usePathname();
-  const [role, setRole] = useState<string | null>(null);
+  const [role, setRole] = useState<string>(() => {
+    if (typeof window === "undefined") return "receiver";
+    return localStorage.getItem("user_role") || "receiver";
+  });
 
   // Read the authenticated user context safely inside the browser window lifecycle
-  useEffect(() => {
-    const savedRole = localStorage.getItem('user_role');
-    setRole(savedRole || 'receiver'); // Fallback default to receiver layout if empty
-  }, []);
+  
 
   const handleLogout = () => {
     localStorage.clear();
@@ -64,7 +64,7 @@ export default function BottomNav({ onCreateClick }: BottomNavProps) {
             <Plus size={24} className="font-black" />
           </button>
 
-          <Link href="/scan" className={`flex flex-col items-center gap-0.5 text-[10px] font-black uppercase tracking-wider ${pathname === '/scan' ? 'text-teal-600' : 'text-slate-400'}`}>
+          <Link href="/courier" className={`flex flex-col items-center gap-0.5 text-[10px] font-black uppercase tracking-wider ${pathname === '/scan' ? 'text-teal-600' : 'text-slate-400'}`}>
             <QrCode size={20} />
             <span>Verify Rider</span>
           </Link>
@@ -74,15 +74,17 @@ export default function BottomNav({ onCreateClick }: BottomNavProps) {
       {/* SECTION C: COURIER (RIDER) INTERFACE VIEWS */}
       {role === 'courier' && (
         <>
-          <Link href="/courier-dashboard" className={`flex flex-col items-center gap-0.5 text-[10px] font-black uppercase tracking-wider ${pathname === '/courier-dashboard' ? 'text-blue-600' : 'text-slate-400'}`}>
+          <Link href="/courier" className={`flex flex-col items-center gap-0.5 text-[10px] font-black uppercase tracking-wider ${pathname === '/courier-dashboard' ? 'text-blue-600' : 'text-slate-400'}`}>
             <Truck size={20} />
             <span>Rider Jobs</span>
           </Link>
 
-          <Link href="/scan" className={`flex flex-col items-center gap-0.5 text-[10px] font-black uppercase tracking-wider ${pathname === '/scan' ? 'text-blue-600' : 'text-slate-400'}`}>
+          <Link href="/courier/scan" className={`flex flex-col items-center gap-0.5 text-[10px] font-black uppercase tracking-wider ${pathname === '/courier/scan' ? 'text-blue-600' : 'text-slate-400'}`}>
             <QrCode size={24} className="bg-blue-600 text-white p-1 rounded-xl shadow-md -mt-4 border-2 border-white w-10 h-10" />
             <span>Scan Handoff</span>
           </Link>
+
+          
         </>
       )}
 

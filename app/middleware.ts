@@ -12,7 +12,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
-  if (pathname.startsWith('/scan') && userRole !== 'courier') {
+  if (pathname.startsWith('/courier') && userRole !== 'courier') {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
@@ -20,5 +20,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/scan/:path*', '/receiver/:path*'],
+  matcher: ['/dashboard/:path*', '/courier/:path*', '/receiver/:path*'],
 };

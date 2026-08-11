@@ -86,7 +86,7 @@ export default function HomePage() {
         if (!isConnected) {
           handleConnectWallet(); // Trigger MetaMask prompt if not connected yet
         }
-        router.push("/scan");
+        router.push("/courier");
         break;
     }
   };
@@ -110,7 +110,7 @@ export default function HomePage() {
         router.push("/receiver");
         break;
       case "courier":
-        router.push("/scan");
+        router.push("/courier");
         break;
     }
   };

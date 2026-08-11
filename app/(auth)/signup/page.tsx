@@ -40,7 +40,7 @@ export default function SignUpPage() {
         } else if (role === 'receiver')  {
             router.push('/receiver-dashboard');
         }else{
-            router.push('/scan');
+            router.push('/courier');
         }
        
     } catch (error: unknown) {

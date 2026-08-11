@@ -18,8 +18,10 @@ import {
   Phone,
 } from "lucide-react";
 import StatusBadge from "@/components/shared/StatusBadge";
-import { useConfirmDeliveryHandler } from "../../hooks/useConfirmDeliveryHandler";
+import { useConfirmDeliveryHandler } from "../../../hooks/useConfirmDeliveryHandler";
 import { useAccount } from "wagmi";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
+import BottomNavCourier from "@/components/navigation/BottomNavCourier";
 
 export interface CourierParcel {
   id: string;
@@ -57,9 +59,61 @@ export default function CourierDashboard() {
   const { address, isConnected } = useAccount();
   const { handleConfirmDelivery, isPending } = useConfirmDeliveryHandler();
 
-  const [isMounted, setIsMounted] = useState(false);
-  const [parcels, setParcels] = useState<CourierParcel[]>([]);
-  const [profile, setProfile] = useState<CourierProfile>(DEFAULT_COURIER_PROFILE);
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
+  const [pendingJobId, setPendingJobId] = useState<string | null>(null);
+
+  // Enforce Wallet Connection before Accepting a Delivery Request
+  const handleAcceptJob = (parcelId: string) => {
+    // 1. Check if wallet is connected
+    if (!isConnected || !address) {
+      setPendingJobId(parcelId);
+      setIsWalletModalOpen(true);
+      return;
+    }
+
+    // 2. Wallet connected: Bind wallet address and courier details to parcel
+    executeJobAcceptance(parcelId, address);
+  };
+
+  const executeJobAcceptance = (parcelId: string, courierWallet: string) => {
+    const localData: CourierParcel[] = JSON.parse(localStorage.getItem("pod_parcels") || "[]");
+    const updated = localData.map((p) => {
+      if (p.id === parcelId) {
+        return {
+          ...p,
+          status: "InTransit" as const,
+          courierAddress: courierWallet,
+          courierName: profile.name || "Assigned Courier",
+          courierPhone: profile.phone || "07039102053",
+          proximityCheckpoint: "Dispatched from Merchant",
+        };
+      }
+      return p;
+    });
+
+    localStorage.setItem("pod_parcels", JSON.stringify(updated));
+    setParcels(updated);
+    window.dispatchEvent(new Event("storage_updated"));
+    setActiveTab("active");
+    setPendingJobId(null);
+    setIsWalletModalOpen(false);
+  };
+  const [isMounted] = useState<boolean>(() => typeof window !== "undefined");
+  const [parcels, setParcels] = useState<CourierParcel[]>(() => {
+    if (typeof window === "undefined") return [];
+    return JSON.parse(localStorage.getItem("pod_parcels") || "[]");
+  });
+ const [profile, setProfile] = useState<CourierProfile>(() => {
+    if (typeof window === "undefined") return DEFAULT_COURIER_PROFILE;
+    const saved = localStorage.getItem("pod_courier_profile");
+    if (!saved) return DEFAULT_COURIER_PROFILE;
+    try {
+      return JSON.parse(saved);
+    } catch {
+      return DEFAULT_COURIER_PROFILE;
+    }
+  });
+  
   const [activeTab, setActiveTab] = useState<"available" | "active" | "completed">("available");
   
   const [selectedParcel, setSelectedParcel] = useState<CourierParcel | null>(null);
@@ -88,9 +142,7 @@ export default function CourierDashboard() {
   }, []);
 
   useEffect(() => {
-    setIsMounted(true);
-    loadData();
-
+    
     window.addEventListener("storage_updated", loadData);
     window.addEventListener("focus", loadData);
 
@@ -102,14 +154,16 @@ export default function CourierDashboard() {
 
   // Keep wallet address synced with Wagmi wallet connection
   useEffect(() => {
-    if (address) {
-      setProfile((prev) => {
-        const updated = { ...prev, walletAddress: address };
-        localStorage.setItem("pod_courier_profile", JSON.stringify(updated));
-        return updated;
-      });
+    if (address && profile.walletAddress.toLowerCase() !== address.toLowerCase()) {
+      const updatedProfile = { ...profile, walletAddress: address };
+      
+        localStorage.setItem("pod_courier_profile", JSON.stringify(updatedProfile));
+       requestAnimationFrame(() => {
+        setProfile(updatedProfile);
+      }
+      );
     }
-  }, [address]);
+  }, [address, profile]);
 
   if (!isMounted) return null;
 
@@ -121,26 +175,7 @@ export default function CourierDashboard() {
   const completedParcels = parcels.filter((p) => p.status === "Delivered");
 
   // Accept job
-  const handleAcceptJob = (parcelId: string) => {
-    const updated = parcels.map((p) => {
-      if (p.id === parcelId) {
-        return {
-          ...p,
-          status: "InTransit" as const,
-          courierAddress: profile.walletAddress,
-          courierName: profile.name,
-          courierPhone: profile.phone,
-          proximityCheckpoint: "Dispatched from Merchant",
-        };
-      }
-      return p;
-    });
-
-    localStorage.setItem("pod_parcels", JSON.stringify(updated));
-    setParcels(updated);
-    window.dispatchEvent(new Event("storage_updated"));
-    setActiveTab("active");
-  };
+  
 
   // Reject job
   const handleRejectJob = (parcelId: string) => {
@@ -568,6 +603,8 @@ export default function CourierDashboard() {
           </div>
         </div>
       )}
+
+      <BottomNavCourier/>
     </div>
   );
-}
+  }
