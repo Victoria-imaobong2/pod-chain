@@ -177,11 +177,10 @@ export default function HomePage() {
 
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
               {navHome.map((item) => (
-                <button
-      type="button"
-      key={item.role}
-      onClick={() => handleRoleClick(item.role)}
-      className="flex flex-col justify-between rounded-2xl border bg-white p-6 shadow-sm hover:border-teal-500 hover:shadow-md transition cursor-pointer text-left w-full"
+                <div
+                key={item.role}
+                onClick={() => handleRoleClick(item.role)}
+                className="flex flex-col justify-between rounded-2xl border bg-white p-6 shadow-sm hover:border-teal-500 hover:shadow-md transition cursor-pointer text-left w-full"
     >
                   <div>
                     <div className="flex items-center gap-3 mb-4">
@@ -210,7 +209,7 @@ export default function HomePage() {
                     <LogIn size={18} />
                     Log In as {item.name.split(" ")[0]}
                   </button>
-                </button>
+                </div>
               ))}
             </div>
           </div>

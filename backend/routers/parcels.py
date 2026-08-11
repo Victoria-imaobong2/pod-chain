@@ -11,15 +11,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 import traceback
 
-# Adjust these imports according to your project setup
+
 from database import get_db
-from models import Parcel  # Import your SQLAlchemy Parcel model
+from models import Parcel 
 from auth_utils import get_current_user
 
 router = APIRouter(
     prefix="/api/v1/parcels",
     tags=["Parcels & Notifications"]
 )
+
+class AcceptParcelRequest(BaseModel):
+    courier_wallet: str
+    courier_phone: Optional[str] = None
+
+class ProximityUpdateRequest(BaseModel):
+    checkpoint: str
 
 # Email Configuration from environment variables
 conf = ConnectionConfig(
@@ -94,6 +101,89 @@ async def get_user_shipments(
         )
 
 
+# 1. Accept Parcel Job
+@router.post("/{parcel_id}/accept")
+async def accept_parcel_job(
+    parcel_id: str, 
+    data: AcceptParcelRequest, 
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(Parcel).where(Parcel.id == parcel_id)
+    result = await db.execute(stmt)
+    parcel = result.scalar_one_or_none()
+
+    if not parcel:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"Parcel with ID {parcel_id} not found"
+        )
+
+    parcel.status = "InTransit"
+    parcel.courier_address = data.courier_wallet
+    if data.courier_phone:
+        parcel.courier_phone = data.courier_phone
+
+    await db.commit()
+    await db.refresh(parcel)
+
+    return {
+        "message": f"Parcel {parcel_id} assigned to courier", 
+        "status": parcel.status,
+        "courier_wallet": parcel.courier_address
+    }
+
+
+# 2. Update Proximity Checkpoint
+@router.patch("/{parcel_id}/proximity")
+async def update_proximity(
+    parcel_id: str, 
+    data: ProximityUpdateRequest, 
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(Parcel).where(Parcel.id == parcel_id)
+    result = await db.execute(stmt)
+    parcel = result.scalar_one_or_none()
+
+    if not parcel:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"Parcel with ID {parcel_id} not found"
+        )
+
+    parcel.proximity_checkpoint = data.checkpoint
+    await db.commit()
+    await db.refresh(parcel)
+
+    return {
+        "message": "Proximity updated successfully", 
+        "checkpoint": parcel.proximity_checkpoint
+    }
+
+
+# 3. Fetch Assigned Courier Details for Receiver Radar
+@router.get("/{parcel_id}/assigned-courier")
+async def get_assigned_courier(
+    parcel_id: str, 
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(Parcel).where(Parcel.id == parcel_id)
+    result = await db.execute(stmt)
+    parcel = result.scalar_one_or_none()
+
+    if not parcel:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"Parcel with ID {parcel_id} not found"
+        )
+
+    return {
+        "parcel_id": parcel.id,
+        "courier_name": getattr(parcel, "courier_name", None) or "Assigned Courier",
+        "courier_phone": getattr(parcel, "courier_phone", None) or "N/A",
+        "courier_email": getattr(parcel, "courier_email", None) or "N/A",
+        "courier_wallet": parcel.courier_address or "Not Assigned",
+        "proximity_checkpoint": getattr(parcel, "proximity_checkpoint", None) or "Dispatched" or "In progress"
+    }
 # ---------------------------------------------------------
 # Async Endpoint: Notify Receiver & Send QR Email
 # ---------------------------------------------------------

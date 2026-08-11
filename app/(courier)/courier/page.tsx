@@ -20,8 +20,8 @@ import {
 import StatusBadge from "@/components/shared/StatusBadge";
 import { useConfirmDeliveryHandler } from "../../../hooks/useConfirmDeliveryHandler";
 import { useAccount } from "wagmi";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
 import BottomNavCourier from "@/components/navigation/BottomNavCourier";
+import MobileWalletConnect from "@/components/wallet/MobileWalletConnect";
 
 export interface CourierParcel {
   id: string;

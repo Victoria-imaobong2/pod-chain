@@ -17,6 +17,10 @@ class Parcel(Base):
     sender_id = Column(Integer, nullable=True)  # Or ForeignKey("users.id") if using a User model
     receiver_email = Column(String, nullable=False)
     receiver_phone = Column(String, nullable=False)
+    courier_name = Column(String, nullable=False)
+    courier_phone = Column(String, nullable=False)
+    courier_email = Column(String, nullable=False)
+    proximity_checkpoint = Column(String, nullable=True, default="In Progress")
     pin = Column(String, nullable=False)
     ipfs_hash = Column(String, nullable=True)
     tx_hash = Column(String, nullable=True)

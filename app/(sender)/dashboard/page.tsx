@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import StatusBadge, { StatusType } from "@/components/shared/StatusBadge";
 import BottomNavSender from "@/components/navigation/BottomNavSender";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
+import MobileWalletConnect from "@/components/wallet/MobileWalletConnect";
 
 interface DeliveryItem {
   id: string;
@@ -179,7 +179,7 @@ export default function SenderDashboard() {
         </p>
       </header>
 
-      <ConnectButton />
+      <MobileWalletConnect />
 
       {/* METRICS CARDS GRID */}
       <section className="grid gap-4 grid-cols-1 md:grid-cols-3 mb-8">
