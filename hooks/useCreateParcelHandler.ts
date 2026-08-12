@@ -133,19 +133,18 @@ export function useCreateParcelHandler() {
         abi: DeliveryEscrowABI,
         functionName: "createParcel",
 
-        // Your contract currently expects:
-        // createParcel(
-        //   string itemDescription,
-        //   string receiverPhone,
-        //   address courier
-        // )
+    
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         args: [
-          formData.contentsName,
+        
           formData.receiverPhone,
-          formattedCourier,
-        ] as any,
+          formData.destinationAddress,
+          formData.contentsName,
+          confirmationHash,
+          formData.ipfsHash,
+
+        ],
 
         value,
       });

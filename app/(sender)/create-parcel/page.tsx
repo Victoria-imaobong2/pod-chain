@@ -107,15 +107,14 @@ export default function CreateParcelPage() {
         );
 
         // Reset form
-        setFormData({
-          receiverEmail: "",
-          receiverPhone: "",
-          courierFeeEth: "0.01",
-          ipfsHash: "",
-          contentsName: "",
-          destinationAddress: "",
-          courierAddress: "",
-        });
+        type ParcelFormData = {
+  receiverEmail: string;
+  receiverPhone: string;
+  courierFeeEth: string;
+  ipfsHash: string;
+  contentsName: string;
+  destinationAddress: string;
+};
 
         setSelectedFile(null);
         setPreviewUrl(null);
@@ -289,7 +288,7 @@ export default function CreateParcelPage() {
           />
 
           <p className="text-[10px] text-slate-400 mt-1">
-            Enter the courier's wallet address.
+            Enter the `courier&apos;s` wallet address.
           </p>
         </div>
 
