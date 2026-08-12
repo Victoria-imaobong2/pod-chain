@@ -6,7 +6,7 @@ import {
   useAccount,
   usePublicClient,
 } from "wagmi";
-import { parseEther } from "viem";
+import { parseEther, keccak256, toBytes } from "viem";
 
 import { DeliveryEscrowABI } from "../lib/abi/DeliveryEscrow";
 
@@ -22,7 +22,6 @@ type ParcelFormData = {
   ipfsHash: string;
   contentsName: string;
   destinationAddress: string;
-  courierAddress: string;
 };
 
 export function useCreateParcelHandler() {
@@ -34,7 +33,8 @@ export function useCreateParcelHandler() {
 
   const handleCreateParcel = async (
     formData: ParcelFormData,
-    selectedFile: File | null
+    selectedFile: File | null,
+    receiverPin: string
   ) => {
     setErrorMsg(null);
 
@@ -47,35 +47,6 @@ export function useCreateParcelHandler() {
       setErrorMsg(msg);
       throw new Error(msg);
     }
-
-    // --------------------------------------------------
-    // COURIER ADDRESS CHECK
-    // --------------------------------------------------
-
-    if (!formData.courierAddress?.trim()) {
-      const msg = "Please enter the courier wallet address.";
-      setErrorMsg(msg);
-      throw new Error(msg);
-    }
-
-    const courierAddress = formData.courierAddress.trim();
-
-    if (!courierAddress.startsWith("0x")) {
-      const msg =
-        "Invalid courier wallet address. It must start with 0x.";
-      setErrorMsg(msg);
-      throw new Error(msg);
-    }
-
-    if (courierAddress.length !== 42) {
-      const msg =
-        "Invalid courier wallet address. A wallet address must contain 42 characters.";
-      setErrorMsg(msg);
-      throw new Error(msg);
-    }
-
-    const formattedCourier =
-      courierAddress as HexAddress;
 
     // --------------------------------------------------
     // AMOUNT CHECK
@@ -123,6 +94,16 @@ export function useCreateParcelHandler() {
       throw new Error(msg);
     }
 
+    if (!receiverPin?.trim()) {
+       const msg = "Receiver delivery OTP is required.";
+        setErrorMsg(msg);
+      throw new Error(msg);
+    }
+
+// Hash the SAME OTP that will be sent to the receiver's email.
+const confirmationHash = keccak256(toBytes(receiverPin.trim()));
+
+
     try {
       // ------------------------------------------------
       // CREATE BLOCKCHAIN ESCROW
@@ -133,14 +114,12 @@ export function useCreateParcelHandler() {
         abi: DeliveryEscrowABI,
         functionName: "createParcel",
 
-    
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         args: [
-        
+          formData.contentsName,
           formData.receiverPhone,
           formData.destinationAddress,
-          formData.contentsName,
           confirmationHash,
           formData.ipfsHash,
 

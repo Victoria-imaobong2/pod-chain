@@ -3,11 +3,24 @@
 export const DeliveryEscrowABI = [
   {
     "inputs": [
+
       {
-        "internalType": "address",
-        "name": "_receiver",
-        "type": "address"
+      internalType: "string",
+      name: "_contentsName",
+      type: "string",
+    },
+
+      {
+        internalType: "string",
+        name: "_receiverPhone",
+        type: "string"
       },
+      {
+      internalType: "string",
+      name: "_destinationAddress",
+      type: "string",
+    },
+      
       {
         "internalType": "bytes32",
         "name": "_confirmationHash",

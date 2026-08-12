@@ -14,12 +14,14 @@ class Parcel(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     tracking_number = Column(String, unique=True, index=True, nullable=True)
-    sender_id = Column(Integer, nullable=True)  # Or ForeignKey("users.id") if using a User model
+    sender_id = Column(Integer, nullable=True) 
+    contents_name = Column(String, nullable=False) 
     receiver_email = Column(String, nullable=False)
     receiver_phone = Column(String, nullable=False)
-    courier_name = Column(String, nullable=False)
-    courier_phone = Column(String, nullable=False)
-    courier_email = Column(String, nullable=False)
+    destination_address = Column(String, nullable=False)
+    courier_name = Column(String, nullable=True)
+    courier_phone = Column(String, nullable=True)
+    courier_email = Column(String, nullable=True)
     proximity_checkpoint = Column(String, nullable=True, default="In Progress")
     pin = Column(String, nullable=False)
     ipfs_hash = Column(String, nullable=True)
