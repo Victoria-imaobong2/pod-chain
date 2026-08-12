@@ -110,14 +110,21 @@ export function useCreateParcelHandler() {
         throw new Error("Failed to generate delivery OTP from backend.");
       }
 
-  
+  const data = await otpResponse.json();
 
 // Hash the SAME OTP that will be sent to the receiver's email.
-const confirmationHash = await otpResponse.json();
+const confirmationHash = data.confirmationHash;
 
-if (!confirmationHash) {
-  throw new Error("Invalid confirmation hash returned from server.");
-      }
+if (
+  typeof confirmationHash !== "string" ||
+  !confirmationHash.startsWith("0x") ||
+  confirmationHash.length !== 66 // '0x' + 64 hex chars = 66 chars
+) {
+  console.error("Invalid confirmationHash received:", confirmationHash);
+  throw new Error(
+    "Invalid bytes32 hash format received from server. Expected a 0x-prefixed 32-byte hex string."
+  );   
+ }
 
       // ------------------------------------------------
       // CREATE BLOCKCHAIN ESCROW
@@ -132,7 +139,7 @@ if (!confirmationHash) {
           formData.contentsName,
           formData.receiverPhone,
           formData.destinationAddress,
-          confirmationHash,
+          confirmationHash as `0x${string}`, // Ensure it's treated as a bytes32
           formData.ipfsHash,
 
         ],

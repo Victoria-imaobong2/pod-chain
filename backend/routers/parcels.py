@@ -35,7 +35,7 @@ async def generate_otp(payload:OTPRequest):
     #2. Compute Keccak-256 ash for contract verification
 
     otp_hash ="0x" + hashlib.sha3_256(raw_otp.encode("utf-8")).hexdigest()
-
+    confirmation_hash = f"0x{otp_hex}"
     return {
         "status": "success",
         "confirmationHash": otp_hash,
