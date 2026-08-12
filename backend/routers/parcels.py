@@ -2,6 +2,8 @@ import io
 import base64
 import os
 import qrcode
+import hashlib
+import secrets
 from typing import Optional
 from datetime import datetime, time
 from fastapi import APIRouter, HTTPException, Depends, Query, status
@@ -21,6 +23,23 @@ router = APIRouter(
     tags=["Parcels & Notifications"]
 )
 
+class OTPRequest(BaseModel):
+    receiverEmail: EmailStr
+    receiverPhone: str
+
+@router.post("/generate-otp")
+async def generate_otp(payload:OTPRequest):
+    #1. Generate random 6-digit OTP
+    raw_otp = f"{secrets.randbelow(1000000):06d}"  # Ensures leading zeros
+
+    #2. Compute Keccak-256 ash for contract verification
+
+    otp_hash ="0x" + hashlib.sha3_256(raw_otp.encode("utf-8")).hexdigest()
+
+    return {
+        "status": "success",
+        "confirmationHash": otp_hash,
+    }
 class AcceptParcelRequest(BaseModel):
     courier_wallet: str
     courier_phone: Optional[str] = None

@@ -44,7 +44,6 @@ export default function CreateParcelPage() {
     ipfsHash: "",
     contentsName: "",
     destinationAddress: "",
-    courierAddress: "",
   });
 
   const [selectedFile, setSelectedFile] =
@@ -267,30 +266,7 @@ export default function CreateParcelPage() {
           />
         </div>
 
-        {/* COURIER WALLET */}
-        <div>
-          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
-            Courier Wallet Address
-          </label>
-
-          <input
-            type="text"
-            required
-            value={formData.courierAddress}
-            onChange={(e) =>
-              setFormData({
-                ...formData,
-                courierAddress: e.target.value,
-              })
-            }
-            placeholder="0x..."
-            className="w-full p-3 border border-slate-300 rounded-xl outline-none text-slate-900 bg-slate-50 focus:bg-white focus:border-teal-500 transition-all text-sm font-mono"
-          />
-
-          <p className="text-[10px] text-slate-400 mt-1">
-            Enter the `courier&apos;s` wallet address.
-          </p>
-        </div>
+       
 
         {/* COURIER FEE */}
         <div>

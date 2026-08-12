@@ -34,7 +34,6 @@ export function useCreateParcelHandler() {
   const handleCreateParcel = async (
     formData: ParcelFormData,
     selectedFile: File | null,
-    receiverPin: string
   ) => {
     setErrorMsg(null);
 
@@ -94,17 +93,32 @@ export function useCreateParcelHandler() {
       throw new Error(msg);
     }
 
-    if (!receiverPin?.trim()) {
-       const msg = "Receiver delivery OTP is required.";
-        setErrorMsg(msg);
-      throw new Error(msg);
-    }
+    try {
+      // ------------------------------------------------
+      // FETCH OTP HASH FROM BACKEND & EMAIL RECEIVER
+      // ------------------------------------------------
+      const otpResponse = await fetch("http://127.0.0.1:8000/api/parcels/generate-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          receiver_email: formData.receiverEmail,
+          receiver_phone: formData.receiverPhone,
+        }),
+      });
+
+      if (!otpResponse.ok) {
+        throw new Error("Failed to generate delivery OTP from backend.");
+      }
+
+  
 
 // Hash the SAME OTP that will be sent to the receiver's email.
-const confirmationHash = keccak256(toBytes(receiverPin.trim()));
+const confirmationHash = await otpResponse.json();
 
+if (!confirmationHash) {
+  throw new Error("Invalid confirmation hash returned from server.");
+      }
 
-    try {
       // ------------------------------------------------
       // CREATE BLOCKCHAIN ESCROW
       // ------------------------------------------------
@@ -114,8 +128,6 @@ const confirmationHash = keccak256(toBytes(receiverPin.trim()));
         abi: DeliveryEscrowABI,
         functionName: "createParcel",
 
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         args: [
           formData.contentsName,
           formData.receiverPhone,
@@ -142,7 +154,6 @@ const confirmationHash = keccak256(toBytes(receiverPin.trim()));
         success: true,
         txHash,
         ipfsHash: formData.ipfsHash || null,
-        pin: null,
       };
     } catch (err: unknown) {
       console.error("Create parcel error:", err);
