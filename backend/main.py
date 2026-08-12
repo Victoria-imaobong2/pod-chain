@@ -32,7 +32,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     name: str
     password: str
-    role: UserRole = UserRole.SENDER  # Default role or passed from frontend
+    role: UserRole = UserRole.SME  # Default role or passed from frontend
     phone_number: str | None = None
     wallet_address: str | None = None
 

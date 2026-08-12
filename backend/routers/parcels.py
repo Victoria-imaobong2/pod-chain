@@ -19,13 +19,13 @@ from models import Parcel
 from auth_utils import get_current_user
 
 router = APIRouter(
-    prefix="/api/v1/parcels",
+    prefix="/api/parcels",
     tags=["Parcels & Notifications"]
 )
 
 class OTPRequest(BaseModel):
-    receiverEmail: EmailStr
-    receiverPhone: str
+    receiver_email: EmailStr
+    receiver_phone: str
 
 @router.post("/generate-otp")
 async def generate_otp(payload:OTPRequest):
