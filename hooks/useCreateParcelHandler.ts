@@ -6,7 +6,7 @@ import {
   useAccount,
   usePublicClient,
 } from "wagmi";
-import { parseEther, keccak256, toBytes } from "viem";
+import { parseEther } from "viem";
 
 import { DeliveryEscrowABI } from "../lib/abi/DeliveryEscrow";
 
@@ -33,13 +33,13 @@ export function useCreateParcelHandler() {
 
   const handleCreateParcel = async (
     formData: ParcelFormData,
-    selectedFile: File | null,
+    selectedFile: File | null
   ) => {
     setErrorMsg(null);
 
-    // --------------------------------------------------
-    // WALLET CHECK
-    // --------------------------------------------------
+    // ============================================================
+    // 1. CHECK WALLET
+    // ============================================================
 
     if (!isConnected || !address) {
       const msg = "Please connect your wallet first.";
@@ -47,9 +47,9 @@ export function useCreateParcelHandler() {
       throw new Error(msg);
     }
 
-    // --------------------------------------------------
-    // AMOUNT CHECK
-    // --------------------------------------------------
+    // ============================================================
+    // 2. CHECK DELIVERY FEE
+    // ============================================================
 
     if (!formData.courierFeeEth?.trim()) {
       const msg = "Please enter the courier delivery fee.";
@@ -73,9 +73,9 @@ export function useCreateParcelHandler() {
       throw new Error(msg);
     }
 
-    // --------------------------------------------------
-    // CONTENTS CHECK
-    // --------------------------------------------------
+    // ============================================================
+    // 3. CHECK PACKAGE CONTENT
+    // ============================================================
 
     if (!formData.contentsName.trim()) {
       const msg = "Please enter the package contents.";
@@ -83,9 +83,29 @@ export function useCreateParcelHandler() {
       throw new Error(msg);
     }
 
-    // --------------------------------------------------
-    // FILE CHECK
-    // --------------------------------------------------
+    // ============================================================
+    // 4. CHECK RECEIVER PHONE
+    // ============================================================
+
+    if (!formData.receiverPhone.trim()) {
+      const msg = "Please enter the receiver's phone number.";
+      setErrorMsg(msg);
+      throw new Error(msg);
+    }
+
+    // ============================================================
+    // 5. CHECK DESTINATION
+    // ============================================================
+
+    if (!formData.destinationAddress.trim()) {
+      const msg = "Please enter the receiver's destination address.";
+      setErrorMsg(msg);
+      throw new Error(msg);
+    }
+
+    // ============================================================
+    // 6. CHECK FILE
+    // ============================================================
 
     if (!selectedFile) {
       const msg = "Please upload a package proof photo.";
@@ -94,41 +114,117 @@ export function useCreateParcelHandler() {
     }
 
     try {
-      // ------------------------------------------------
-      // FETCH OTP HASH FROM BACKEND & EMAIL RECEIVER
-      // ------------------------------------------------
-      const otpResponse = await fetch("http://127.0.0.1:8000/api/parcels/generate-otp", {
+      // ============================================================
+      // STEP 1 — UPLOAD PACKAGE IMAGE TO IPFS
+      // ============================================================
+
+      console.log("========================================");
+      console.log("STEP 1: Uploading package proof to IPFS");
+      console.log("========================================");
+
+      const ipfsFormData = new FormData();
+
+      ipfsFormData.append("file", selectedFile);
+
+      const ipfsResponse = await fetch("/api/ipfs", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          receiver_email: formData.receiverEmail,
-          receiver_phone: formData.receiverPhone,
-        }),
+        body: ipfsFormData,
       });
 
-      if (!otpResponse.ok) {
-        throw new Error("Failed to generate delivery OTP from backend.");
+      if (!ipfsResponse.ok) {
+        let errorMessage =
+          "Failed to upload package proof to IPFS.";
+
+        try {
+          const errorData = await ipfsResponse.json();
+
+          if (errorData?.error) {
+            errorMessage = errorData.error;
+          }
+        } catch {
+          // Ignore JSON parsing error
+        }
+
+        throw new Error(errorMessage);
       }
 
-  const data = await otpResponse.json();
+      const ipfsData = await ipfsResponse.json();
 
-// Hash the SAME OTP that will be sent to the receiver's email.
-const confirmationHash = data.confirmationHash;
+      const ipfsHash = ipfsData?.IpfsHash;
 
-if (
-  typeof confirmationHash !== "string" ||
-  !confirmationHash.startsWith("0x") ||
-  confirmationHash.length !== 66 // '0x' + 64 hex chars = 66 chars
-) {
-  console.error("Invalid confirmationHash received:", confirmationHash);
-  throw new Error(
-    "Invalid bytes32 hash format received from server. Expected a 0x-prefixed 32-byte hex string."
-  );   
- }
+      if (!ipfsHash || typeof ipfsHash !== "string") {
+        throw new Error(
+          "Pinata upload succeeded but no IPFS CID was returned."
+        );
+      }
 
-      // ------------------------------------------------
-      // CREATE BLOCKCHAIN ESCROW
-      // ------------------------------------------------
+      console.log("IPFS upload successful.");
+      console.log("IPFS CID:", ipfsHash);
+
+      // ============================================================
+      // STEP 2 — GENERATE DELIVERY OTP
+      // ============================================================
+
+      console.log("========================================");
+      console.log("STEP 2: Generating delivery OTP");
+      console.log("========================================");
+
+      const otpResponse = await fetch(
+        "http://127.0.0.1:8000/api/v1/parcels/generate-otp",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            receiver_email: formData.receiverEmail,
+            receiver_phone: formData.receiverPhone,
+          }),
+        }
+      );
+
+      /*
+       * IMPORTANT:
+       *
+       * Your current parcels.py DOES NOT contain /generate-otp.
+       *
+       * Therefore this endpoint will currently return 404.
+       *
+       * We will fix this below after this handler.
+       */
+
+      if (!otpResponse.ok) {
+        const errorText = await otpResponse.text();
+
+        throw new Error(
+          `Failed to generate delivery OTP: ${errorText}`
+        );
+      }
+
+      const otpData = await otpResponse.json();
+
+      const confirmationHash = otpData?.confirmationHash;
+
+      if (
+        typeof confirmationHash !== "string" ||
+        !confirmationHash.startsWith("0x") ||
+        confirmationHash.length !== 66
+      ) {
+        throw new Error(
+          "Invalid bytes32 confirmation hash received from backend."
+        );
+      }
+
+      console.log("OTP hash generated successfully.");
+      console.log("Confirmation hash:", confirmationHash);
+
+      // ============================================================
+      // STEP 3 — CREATE BLOCKCHAIN ESCROW
+      // ============================================================
+
+      console.log("========================================");
+      console.log("STEP 3: Creating blockchain escrow");
+      console.log("========================================");
 
       const txHash = await writeContractAsync({
         address: CONTRACT_ADDRESS,
@@ -139,31 +235,184 @@ if (
           formData.contentsName,
           formData.receiverPhone,
           formData.destinationAddress,
-          confirmationHash as `0x${string}`, // Ensure it's treated as a bytes32
-          formData.ipfsHash,
-
+          confirmationHash as `0x${string}`,
+          ipfsHash,
         ],
 
         value,
       });
 
-      // ------------------------------------------------
-      // WAIT FOR CONFIRMATION
-      // ------------------------------------------------
+      console.log("Blockchain transaction submitted:");
+      console.log(txHash);
 
-      if (publicClient) {
+      // ============================================================
+      // STEP 4 — WAIT FOR BLOCKCHAIN CONFIRMATION
+      // ============================================================
+
+      console.log("========================================");
+      console.log("STEP 4: Waiting for blockchain confirmation");
+      console.log("========================================");
+
+      if (!publicClient) {
+        throw new Error(
+          "Blockchain client is unavailable."
+        );
+      }
+
+      const receipt =
         await publicClient.waitForTransactionReceipt({
           hash: txHash,
         });
+
+      console.log(
+        "Blockchain transaction confirmed.",
+        receipt
+      );
+
+      // ============================================================
+      // STEP 5 — GET JWT TOKEN
+      // ============================================================
+
+      console.log("========================================");
+      console.log("STEP 5: Getting authentication token");
+      console.log("========================================");
+
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        throw new Error(
+          "Your login session has expired. Please log in again before creating a parcel."
+        );
       }
+
+      console.log("JWT token found.");
+
+      // ============================================================
+      // STEP 6 — GENERATE TRACKING NUMBER
+      // ============================================================
+
+      const trackingNumber =
+        `POD-${Date.now()}-${Math.floor(
+          Math.random() * 10000
+        )
+          .toString()
+          .padStart(4, "0")}`;
+
+      console.log(
+        "Generated tracking number:",
+        trackingNumber
+      );
+
+      // ============================================================
+      // STEP 7 — SYNC BLOCKCHAIN TRANSACTION TO POSTGRESQL
+      // ============================================================
+
+      console.log("========================================");
+      console.log("STEP 7: Syncing parcel to PostgreSQL");
+      console.log("========================================");
+
+      const syncResponse = await fetch(
+        "http://127.0.0.1:8000/api/v1/parcels/sync",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+
+          body: JSON.stringify({
+            tracking_number: trackingNumber,
+
+            contents_name:
+              formData.contentsName,
+
+            receiver_email:
+              formData.receiverEmail,
+
+            receiver_phone:
+              formData.receiverPhone,
+
+            destination_address:
+              formData.destinationAddress,
+
+            pin: "000000",
+
+            ipfs_hash: ipfsHash,
+
+            tx_hash: txHash,
+
+            sender_wallet: address,
+          }),
+        }
+      );
+
+      // ============================================================
+      // STEP 8 — CHECK POSTGRESQL RESPONSE
+      // ============================================================
+
+      if (!syncResponse.ok) {
+        const errorText =
+          await syncResponse.text();
+
+        console.error(
+          "PostgreSQL sync failed:",
+          errorText
+        );
+
+        throw new Error(
+          `Blockchain transaction succeeded, but PostgreSQL synchronization failed: ${errorText}`
+        );
+      }
+
+      const syncData =
+        await syncResponse.json();
+
+      console.log(
+        "========================================"
+      );
+      console.log(
+        "POSTGRESQL SYNC SUCCESSFUL"
+      );
+      console.log(
+        "========================================"
+      );
+
+      console.log(
+        "Database response:",
+        syncData
+      );
+
+      // ============================================================
+      // STEP 9 — RETURN SUCCESS
+      // ============================================================
 
       return {
         success: true,
+
         txHash,
-        ipfsHash: formData.ipfsHash || null,
+
+        ipfsHash,
+
+        trackingNumber,
+
+        databaseParcel:
+          syncData?.parcel ?? null,
       };
     } catch (err: unknown) {
-      console.error("Create parcel error:", err);
+      console.error(
+        "========================================"
+      );
+
+      console.error(
+        "CREATE PARCEL ERROR"
+      );
+
+      console.error(
+        "========================================"
+      );
+
+      console.error(err);
 
       const error = err as {
         shortMessage?: string;

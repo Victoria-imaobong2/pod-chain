@@ -1,5 +1,5 @@
 "use client";
-
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   Upload,
@@ -16,6 +16,7 @@ import {
 import { useCreateParcelHandler } from "../../../hooks/useCreateParcelHandler";
 
 export default function CreateParcelPage() {
+  const router = useRouter();
   const {
     handleCreateParcel,
     isPending,
@@ -73,8 +74,7 @@ export default function CreateParcelPage() {
         URL.createObjectURL(file)
       );
     }
-  };
-
+  }; 
   const onSubmit = async (
     e: React.FormEvent
   ) => {
@@ -105,14 +105,17 @@ export default function CreateParcelPage() {
           `Parcel Created Successfully!\n\nTransaction Hash: ${result.txHash}`
         );
 
+        // Redirect back to sender home dashboard
+        router.push("/dashboard");
+
         // Reset form
         type ParcelFormData = {
-  receiverEmail: string;
-  receiverPhone: string;
-  courierFeeEth: string;
-  ipfsHash: string;
-  contentsName: string;
-  destinationAddress: string;
+          receiverEmail: string;
+          receiverPhone: string;
+          courierFeeEth: string;
+          ipfsHash: string;
+          contentsName: string;
+          destinationAddress: string;
 };
 
         setSelectedFile(null);
@@ -241,6 +244,27 @@ export default function CreateParcelPage() {
               })
             }
             placeholder="+234..."
+            className="w-full p-3 border border-slate-300 rounded-xl outline-none text-slate-900 bg-slate-50 focus:bg-white focus:border-teal-500 transition-all text-sm"
+          />
+        </div>
+
+        {/* RECEIVER DESTINATION ADDRESS */}
+        <div>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
+            Receiver Destination Address
+          </label>
+
+          <input
+            type="text"
+            required
+            value={formData.destinationAddress}
+            onChange={(e) =>
+              setFormData({
+                ...formData,
+                destinationAddress: e.target.value,
+              })
+            }
+            placeholder="Street Address, City, State, ZIP"
             className="w-full p-3 border border-slate-300 rounded-xl outline-none text-slate-900 bg-slate-50 focus:bg-white focus:border-teal-500 transition-all text-sm"
           />
         </div>
