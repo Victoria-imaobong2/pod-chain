@@ -1,6 +1,6 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Upload,
   Loader2,
@@ -14,6 +14,7 @@ import {
 } from "wagmi";
 
 import { useCreateParcelHandler } from "../../../hooks/useCreateParcelHandler";
+import { addRecentDelivery, shortenHash } from "@/lib/recentDeliveries";
 
 export default function CreateParcelPage() {
   const router = useRouter();
@@ -21,6 +22,16 @@ export default function CreateParcelPage() {
     handleCreateParcel,
     isPending,
   } = useCreateParcelHandler();
+
+  // Guard: creating a parcel requires an authenticated session (JWT). If the
+  // token is missing on this origin, send the user to log in immediately
+  // instead of letting them fill the form and pay gas before we notice.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!localStorage.getItem("token")) {
+      router.replace("/login");
+    }
+  }, [router]);
 
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -101,25 +112,30 @@ export default function CreateParcelPage() {
         );
 
       if (result?.success) {
+        // Record the new parcel in the shared ledger so it appears in the
+        // dashboard's transaction table on the next mount.
+        addRecentDelivery({
+          id: result.trackingNumber,
+          item: formData.contentsName,
+          address: formData.destinationAddress,
+          timestamp: new Date()
+            .toISOString()
+            .replace("T", " ")
+            .substring(0, 16),
+          status: "Created",
+          hash: shortenHash(result.txHash),
+          receiver: formData.receiverEmail,
+        });
+
         alert(
           `Parcel Created Successfully!\n\nTransaction Hash: ${result.txHash}`
         );
 
-        // Redirect back to sender home dashboard
-        router.push("/dashboard");
-
-        // Reset form
-        type ParcelFormData = {
-          receiverEmail: string;
-          receiverPhone: string;
-          courierFeeEth: string;
-          ipfsHash: string;
-          contentsName: string;
-          destinationAddress: string;
-};
-
+        // Reset the form, then redirect back to the sender dashboard.
         setSelectedFile(null);
         setPreviewUrl(null);
+
+        router.push("/dashboard");
       }
     } catch (err) {
       console.error(err);

@@ -635,3 +635,29 @@ async def process_delivery_secret(
                 f"Failed to generate QR notification: {str(e)}"
             ),
         )
+
+    # Add this to backend/routers/parcels.py
+
+@router.get("/available")
+async def get_available_parcels(db: AsyncSession = Depends(get_db)):
+    """
+    Returns all parcels waiting for a courier to accept them.
+    """
+    stmt = select(Parcel).where(Parcel.status == "Created").order_by(Parcel.created_at.desc())
+    result = await db.execute(stmt)
+    parcels = result.scalars().all()
+    
+    return [
+        {
+            "id": p.id,
+            "tracking_number": p.tracking_number,
+            "contents_name": p.contents_name,
+            "receiver_phone": p.receiver_phone,
+            "destination_address": p.destination_address,
+            "status": p.status,
+            "tx_hash": p.tx_hash,
+            "ipfs_hash": p.ipfs_hash,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        }
+        for p in parcels
+    ]

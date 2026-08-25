@@ -9,6 +9,7 @@ import {
 import { parseEther } from "viem";
 
 import { DeliveryEscrowABI } from "../lib/abi/DeliveryEscrow";
+import { API_BASE_URL } from "../lib/config";
 
 type HexAddress = `0x${string}`;
 
@@ -113,6 +114,23 @@ export function useCreateParcelHandler() {
       throw new Error(msg);
     }
 
+    // ============================================================
+    // 7. CHECK AUTH TOKEN  (must run BEFORE any blockchain spend)
+    // ============================================================
+    //
+    // The JWT is required for STEP 7 (PostgreSQL sync). We read it here,
+    // up front, so we never charge the user gas for the on-chain escrow
+    // (STEP 3) only to fail afterwards because they are not logged in.
+
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      const msg =
+        "You are not logged in. Please log in again before creating a parcel.";
+      setErrorMsg(msg);
+      throw new Error(msg);
+    }
+
     try {
       // ============================================================
       // STEP 1 — UPLOAD PACKAGE IMAGE TO IPFS
@@ -170,7 +188,7 @@ export function useCreateParcelHandler() {
       console.log("========================================");
 
       const otpResponse = await fetch(
-        "http://127.0.0.1:8000/api/v1/parcels/generate-otp",
+        `${API_BASE_URL}/api/v1/parcels/generate-otp`,
         {
           method: "POST",
           headers: {
@@ -182,16 +200,6 @@ export function useCreateParcelHandler() {
           }),
         }
       );
-
-      /*
-       * IMPORTANT:
-       *
-       * Your current parcels.py DOES NOT contain /generate-otp.
-       *
-       * Therefore this endpoint will currently return 404.
-       *
-       * We will fix this below after this handler.
-       */
 
       if (!otpResponse.ok) {
         const errorText = await otpResponse.text();
@@ -270,20 +278,10 @@ export function useCreateParcelHandler() {
       );
 
       // ============================================================
-      // STEP 5 — GET JWT TOKEN
+      // STEP 5 — AUTH TOKEN
       // ============================================================
-
-      console.log("========================================");
-      console.log("STEP 5: Getting authentication token");
-      console.log("========================================");
-
-      const token = localStorage.getItem("token");
-
-      if (!token) {
-        throw new Error(
-          "Your login session has expired. Please log in again before creating a parcel."
-        );
-      }
+      // Already validated up front (before the blockchain spend), so the
+      // `token` from the top of this function is guaranteed to be present.
 
       console.log("JWT token found.");
 
@@ -312,7 +310,7 @@ export function useCreateParcelHandler() {
       console.log("========================================");
 
       const syncResponse = await fetch(
-        "http://127.0.0.1:8000/api/v1/parcels/sync",
+        `${API_BASE_URL}/api/v1/parcels/sync`,
         {
           method: "POST",
 
@@ -359,6 +357,16 @@ export function useCreateParcelHandler() {
           "PostgreSQL sync failed:",
           errorText
         );
+
+        // A 401 here means the JWT was present but rejected by the backend
+        // (expired or invalid signature) — this is the real "session expired".
+        if (syncResponse.status === 401) {
+          throw new Error(
+            "Your login session has expired. Please log in again. " +
+              "Note: your on-chain escrow already succeeded (tx " +
+              `${txHash}); re-create the parcel after logging in.`
+          );
+        }
 
         throw new Error(
           `Blockchain transaction succeeded, but PostgreSQL synchronization failed: ${errorText}`

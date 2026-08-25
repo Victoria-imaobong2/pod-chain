@@ -1,0 +1,395 @@
+diff --git a/app/(auth)/login/page.tsx b/app/(auth)/login/page.tsx
+index 950bf5a..7f8bb8a 100644
+--- a/app/(auth)/login/page.tsx
++++ b/app/(auth)/login/page.tsx
+@@ -16,40 +16,73 @@ export default function LoginPage() {
+         setError('');
+ 
+         try{
+-            const response = await fetch('http://localhost:8000/docs/api/auth/login', {
++            const response = await fetch('http://127.0.0.1:8000/api/auth/login', {
+                 method: 'POST',
+                 headers: {
+-                    'Content-Type': 'application/x-www-form-urlencoded'},
+-                    body: new URLSearchParams({
+-                        username: email,
++                    'Content-Type': 'application/json'},
++                    body: JSON.stringify({
++                        email: email.trim(),
+                         password: password,
+                     }),
+             });
+ 
++            const data = await response.json();
++            console.log("LOGIN STATUS:", response.status);
++            console.log("LOGIN RESPONSE:", data);
++           
+             if (!response.ok) {
+-               const errorData = await response.json(); 
+-                throw new Error(errorData.detail || 'Login failed');
++            throw new Error(
++                data?.detail || "Login failed. Please check your credentials."
++            );
+         }
+-        const data = await response.json();
+ 
++        if (!data?.access_token) {
++            throw new Error(
++                "Login succeeded but the backend did not return an access token."
++            );
++        }
++
++        // Save authentication information
+         localStorage.setItem("token", data.access_token);
+-        const role = data.user.role.toLowerCase();
+-        
+-        if (role === 'sender'){
+-            router.push('/login');
+-        } else if (role === 'receiver')  {
+-            router.push('/receiver-dashboard');
+-        }else{
+-            router.push('/courier');
++
++        if (data.user) {
++            localStorage.setItem(
++                "user",
++                JSON.stringify(data.user)
++            );
+         }
+-       
++
++        console.log(
++            "TOKEN SAVED:", localStorage.getItem("token")
++        );
++
++        const role = data.user?.role?.toUpperCase();
++
++        if (role === "SME") {
++            router.push("/dashboard");
++        } else if (role === "RECEIVER") {
++            router.push("/receiver");
++        } else if (role === "COURIER") {
++            router.push("/courier");
++        } else {
++            throw new Error(
++                `Unknown user role returned by backend: ${role}`
++            );
++        }
++
+     } catch (error: unknown) {
+-            const message = error instanceof Error ? error.message : 'Connection failed. Please try again.';
+-            setError(message);
++        console.error("LOGIN ERROR:", error);
++
++        const message =
++            error instanceof Error
++                ? error.message
++                : "Connection failed. Please try again.";
++                setError(message);
++
+     } finally {
+         setLoading(false);
+     }
+-    }
++};
+     return (
+         <main className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+             <div className="w-full max-w-md  bg-white border border-slate-200 rounded-2xl shadow-xl p-6 md:p-8">
+diff --git a/app/(auth)/signup/page.tsx b/app/(auth)/signup/page.tsx
+index d9017fc..1e4d002 100644
+--- a/app/(auth)/signup/page.tsx
++++ b/app/(auth)/signup/page.tsx
+@@ -1,54 +1,52 @@
+ "use client";
+ import React, { useState } from 'react';
+ import { useRouter } from 'next/navigation';
+-import { Lock, Mail, ArrowRight, ShieldCheck, AlertTriangle } from 'lucide-react';
++import { Lock, Mail, User, ArrowRight, ShieldCheck, AlertTriangle } from 'lucide-react';
+ 
+ export default function SignUpPage() {
+     const router = useRouter();
++    const [name, setName] = useState('');
+     const [email, setEmail] = useState('');
+     const [password, setPassword] = useState('');
++    const [role, setRole] = useState('SME');
+     const [loading, setLoading] = useState(false);
+     const [error, setError] = useState('');
+ 
+-    const handleLogin = async (e: React.FormEvent) =>{
++    const handleRegister = async (e: React.FormEvent) =>{
+         e.preventDefault();
+         setLoading(true);
+         setError('');
+ 
+         try{
+-            const response = await fetch('http://localhost:8000/docs/api/auth/login', {
++            const response = await fetch('http://127.0.0.1:8000/api/auth/register', {
+                 method: 'POST',
+                 headers: {
+-                    'Content-Type': 'application/x-www-form-urlencoded'},
+-                    body: new URLSearchParams({
+-                        username: email,
++                    'Content-Type': 'application/json'},
++                    body: JSON.stringify({
++                        name: name.trim(),
++                        email: email.trim(),
+                         password: password,
++                        role: role,
+                     }),
+             });
+ 
++            const data = await response.json();
++
+             if (!response.ok) {
+-               const errorData = await response.json(); 
+-                throw new Error(errorData.detail || 'Login failed');
+-        }
+-        const data = await response.json();
++                throw new Error(
++                    data?.detail || 'Registration failed. Please try again.'
++                );
++            }
+ 
+-        localStorage.setItem("token", data.access_token);
+-        const role = data.user.role.toLowerCase();
+-        
+-        if (role === 'sender'){
+-            router.push('/dashboard');
+-        } else if (role === 'receiver')  {
+-            router.push('/receiver-dashboard');
+-        }else{
+-            router.push('/courier');
+-        }
+-       
+-    } catch (error: unknown) {
++            // Registration succeeded — send the user to the login page.
++            router.push('/login');
++
++        } catch (error: unknown) {
+             const message = error instanceof Error ? error.message : 'Connection failed. Please try again.';
+             setError(message);
+-    } finally {
+-        setLoading(false);
+-    }
++        } finally {
++            setLoading(false);
++        }
+     }
+     return (
+         <main className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+@@ -61,20 +59,34 @@ export default function SignUpPage() {
+                     <p className="text-sm text-slate-500 mt-1">Signup to use the secure Logistics proof of delivery app</p>
+                 </div>
+ 
+-                <form onSubmit={handleLogin} className="space-y-4">
++                <form onSubmit={handleRegister} className="space-y-4">
+                 {error && (
+                     <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-xl font-medium">
+                         <AlertTriangle />
+                         {error}
+                     </div>
+                 )}
++                <div className="space-y-1">
++                    <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Full Name</label>
++                    <div className="relative">
++                        <User className='absolute left-3 top-3.5 text-slate-400' size={18}/>
++                        <input
++                        type="text"
++                        required value = {name}
++                        onChange={(e) => setName(e.target.value)}
++                        placeholder="Jane Doe"
++                        className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-teal-500/20 focus:border-teal-500
++                        outline-none transition-all text-slate-900"
++                        />
++                    </div>
++                </div>
+                 <div className="space-y-1">
+                     <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Email Address</label>
+                     <div className="relative">
+-                        <Mail className='absolute left-3 top 3.5 text-slate-400' size={18}/>
+-                        <input 
++                        <Mail className='absolute left-3 top-3.5 text-slate-400' size={18}/>
++                        <input
+                         type="email"
+-                        required value = {email} 
++                        required value = {email}
+                         onChange={(e) => setEmail(e.target.value)}
+                         placeholder="email@youremail.com"
+                         className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-teal-500/20 focus:border-teal-500
+@@ -95,7 +107,20 @@ export default function SignUpPage() {
+                         />
+                     </div>
+                 </div>
+-                <button 
++                <div className="space-y-1">
++                    <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Account Type</label>
++                    <select
++                        value={role}
++                        onChange={(e) => setRole(e.target.value)}
++                        className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-teal-500/20 focus:border-teal-500
++                        outline-none transition-all text-slate-900"
++                    >
++                        <option value="SME">Sender (SME)</option>
++                        <option value="COURIER">Courier</option>
++                        <option value="RECEIVER">Receiver</option>
++                    </select>
++                </div>
++                <button
+                 type='submit'
+                 disabled={loading}
+                 className="w-full bg-teal-600 hover:bg-teal-700 text-white py-3.5 rounded-xl font-semibold transition-all shadow-md flex items-center justify-center gap-2 mt-2 disabled:opacity-50"
+@@ -103,9 +128,9 @@ export default function SignUpPage() {
+                    {loading ? 'Creating Account...' : 'Create Account'}
+                    {!loading && <ArrowRight size={18} />}
+                 </button>
+-                </form> 
++                </form>
+             </div>
+         </main>
+     )
+ 
+-}
+\ No newline at end of file
++}
+diff --git a/backend/__pycache__/auth_utils.cpython-313.pyc b/backend/__pycache__/auth_utils.cpython-313.pyc
+index d0914a1..848680d 100644
+Binary files a/backend/__pycache__/auth_utils.cpython-313.pyc and b/backend/__pycache__/auth_utils.cpython-313.pyc differ
+diff --git a/backend/auth_utils.py b/backend/auth_utils.py
+index 0d5e472..a1b0719 100644
+--- a/backend/auth_utils.py
++++ b/backend/auth_utils.py
+@@ -1,30 +1,58 @@
++import os
+ from datetime import datetime, timedelta, timezone
+ from typing import Union
+-from passlib.context import CryptContext
++
++import bcrypt
+ import jwt
++from dotenv import load_dotenv
+ from fastapi import Depends, HTTPException, status
+ from fastapi.security import OAuth2PasswordBearer
+ 
+ from jwt.exceptions import PyJWTError
+ from sqlalchemy.ext.asyncio import AsyncSession
+ from sqlalchemy.future import select
++
+ from database import get_db
+-SECRET_KEY = "SECRET CODE"
++from models import UserModel
++
++load_dotenv()
++
++# Read the signing secret from the environment (backend/.env). Falls back to a
++# constant only if the variable is unset so the service still starts locally.
++SECRET_KEY = os.getenv("SECRET_KEY", "SECRET CODE")
+ ALGORITHM = "HS256"
+ ACCESS_TOKEN_EXPIRE_MINUTES = 120
+ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+ 
++# bcrypt only hashes the first 72 bytes of a password. Older passlib versions
++# truncated silently; bcrypt 5.x raises instead, so we truncate explicitly to
++# keep behaviour stable and stay compatible with existing $2b$ hashes.
++_BCRYPT_MAX_BYTES = 72
++
++
++def _to_bcrypt_bytes(password: str) -> bytes:
++    return password.encode("utf-8")[:_BCRYPT_MAX_BYTES]
+ 
+-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+ 
+ def hash_password(password: str) -> str:
+-    return pwd_context.hash(password)
++    hashed = bcrypt.hashpw(_to_bcrypt_bytes(password), bcrypt.gensalt())
++    return hashed.decode("utf-8")
+ 
+-def verify_password(plain_password:str, hashed_password:str) -> bool:
+-    return pwd_context.verify(plain_password, hashed_password)
+ 
+-def create_access_token(data:dict, expires_delta: Union[timedelta, None] = None) -> str:
+-    to_encode =data.copy()
++def verify_password(plain_password: str, hashed_password: str) -> bool:
++    try:
++        return bcrypt.checkpw(
++            _to_bcrypt_bytes(plain_password),
++            hashed_password.encode("utf-8"),
++        )
++    except (ValueError, TypeError):
++        # Malformed/empty stored hash -> treat as a failed verification
++        # instead of raising a 500.
++        return False
++
++
++def create_access_token(data: dict, expires_delta: Union[timedelta, None] = None) -> str:
++    to_encode = data.copy()
+     if expires_delta:
+         expire = datetime.now(timezone.utc) + expires_delta
+     else:
+@@ -33,10 +61,11 @@ def create_access_token(data:dict, expires_delta: Union[timedelta, None] = None)
+     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+     return encoded_jwt
+ 
++
+ async def get_current_user(
+-        token:str = Depends(oauth2_scheme),
+-        db: AsyncSession = Depends(get_db)
+-    ):
++        token: str = Depends(oauth2_scheme),
++        db: AsyncSession = Depends(get_db),
++    ) -> dict:
+     credentials_exception = HTTPException(
+         status_code=status.HTTP_401_UNAUTHORIZED,
+         detail="Could not validate credentials",
+@@ -44,17 +73,25 @@ async def get_current_user(
+     )
+ 
+     try:
+-        #Decode the incoming JWT token
++        # Decode the incoming JWT token
+         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+         email: str = payload.get("sub")
+         if email is None:
+             raise credentials_exception
+     except PyJWTError:
+         raise credentials_exception
+-    result = await db.execute(select(User).where(User.email == email))
++
++    result = await db.execute(select(UserModel).where(UserModel.email == email))
+     user = result.scalars().first()
+ 
+     if user is None:
+         raise credentials_exception
+ 
+-    return user
++    # Return a plain dict so downstream routers can use current_user["id"].
++    return {
++        "id": user.id,
++        "email": user.email,
++        "name": user.name,
++        "role": user.role.value if hasattr(user.role, "value") else str(user.role),
++        "wallet_address": user.wallet_address,
++    }
+diff --git a/backend/routers/__pycache__/parcels.cpython-313.pyc b/backend/routers/__pycache__/parcels.cpython-313.pyc
+index 569c2a7..6a093b7 100644
+Binary files a/backend/routers/__pycache__/parcels.cpython-313.pyc and b/backend/routers/__pycache__/parcels.cpython-313.pyc differ
+diff --git a/hooks/useCreateParcelHandler.ts b/hooks/useCreateParcelHandler.ts
+index 7f9073f..83c4d30 100644
+--- a/hooks/useCreateParcelHandler.ts
++++ b/hooks/useCreateParcelHandler.ts
+@@ -183,15 +183,7 @@ export function useCreateParcelHandler() {
+         }
+       );
+ 
+-      /*
+-       * IMPORTANT:
+-       *
+-       * Your current parcels.py DOES NOT contain /generate-otp.
+-       *
+-       * Therefore this endpoint will currently return 404.
+-       *
+-       * We will fix this below after this handler.
+-       */
++      
+ 
+       if (!otpResponse.ok) {
+         const errorText = await otpResponse.text();

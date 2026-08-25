@@ -9,89 +9,31 @@ import {
   X,
   Filter,
 } from "lucide-react";
-import StatusBadge, { StatusType } from "@/components/shared/StatusBadge";
+import StatusBadge from "@/components/shared/StatusBadge";
 import BottomNavSender from "@/components/navigation/BottomNavSender";
 import MobileWalletConnect from "@/components/wallet/MobileWalletConnect";
-
-interface DeliveryItem {
-  id: string;
-  item: string;
-  address: string;
-  timestamp: string;
-  status: StatusType;
-  hash: string;
-  receiver: string;
-}
-
-const INITIAL_DELIVERIES: DeliveryItem[] = [
-  {
-    id: "POD-001",
-    item: "Groceries",
-    address: "123 Royce Street, Cityville",
-    timestamp: "2026-06-01 14:30",
-    status: "Delivered",
-    hash: "0x7a83...2c91",
-    receiver: "0x111C...YU",
-  },
-  {
-    id: "POD-002",
-    item: "Groceries",
-    address: "123 Item Street, Owerri",
-    timestamp: "2026-06-01 14:30",
-    status: "Delivered",
-    hash: "0x4b12...ef84",
-    receiver: "0x111C...YD",
-  },
-  {
-    id: "POD-003",
-    item: "Electronics",
-    address: "789 Oak Ave, Villagetown",
-    timestamp: "2026-06-02 10:15",
-    status: "InTransit",
-    hash: "0x9dca...33a1",
-    receiver: "0x222D...AB",
-  },
-  {
-    id: "POD-004",
-    item: "Gadgets",
-    address: "456 Elm St, Townsville",
-    timestamp: "2026-06-03 09:00",
-    status: "Created",
-    hash: "Pending Escrow",
-    receiver: "0x333E...CD",
-  },
-];
+import {
+  type DeliveryItem,
+  getRecentDeliveries,
+  saveRecentDeliveries,
+} from "@/lib/recentDeliveries";
 
 export default function SenderDashboard() {
   const [isSeeAllOpen, setIsSeeAllOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Deliveries state with Lazy Initialization from localStorage
-  const [recentDeliveries, setRecentDeliveries] = useState<DeliveryItem[]>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem("pod_recent_deliveries");
-        if (saved) return JSON.parse(saved) as DeliveryItem[];
-      } catch (e) {
-        console.error("Storage load error", e);
-      }
-    }
-    return INITIAL_DELIVERIES;
-  });
-  
-  
+  // Deliveries state with Lazy Initialization from the shared ledger store
+  const [recentDeliveries, setRecentDeliveries] = useState<DeliveryItem[]>(
+    () => getRecentDeliveries()
+  );
+
+
   // Keep filtered list in sync with main deliveries
   const [filteredDeliveries, setFilteredDeliveries] = useState<DeliveryItem[]>(recentDeliveries);
 
-  // Save deliveries to localStorage whenever updated
+  // Persist the ledger whenever it changes
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      try {
-        localStorage.setItem("pod_recent_deliveries", JSON.stringify(recentDeliveries));
-      } catch (e) {
-        console.error("Storage save error", e);
-      }
-    }
+    saveRecentDeliveries(recentDeliveries);
   }, [recentDeliveries]);
 
   // Date range filter state for "See All" modal

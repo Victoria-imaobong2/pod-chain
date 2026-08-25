@@ -1,7 +1,9 @@
 "use client";
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Lock, Mail, ArrowRight, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { API_BASE_URL } from '@/lib/config';
 
 export default function LoginPage() {
     const router = useRouter();
@@ -16,43 +18,78 @@ export default function LoginPage() {
         setError('');
 
         try{
-            const response = await fetch('http://localhost:8000/docs/api/auth/login', {
+            const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'},
-                    body: new URLSearchParams({
-                        username: email,
-                        password: password,
-                    }),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    email: email.trim(),
+                    password: password,
+                }),
             });
 
+            const data = await response.json();
+            console.log("LOGIN STATUS:", response.status);
+            console.log("LOGIN RESPONSE:", data);
+           
             if (!response.ok) {
-               const errorData = await response.json(); 
-                throw new Error(errorData.detail || 'Login failed');
-        }
-        const data = await response.json();
+                throw new Error(
+                    data?.detail || "Login failed. Please check your credentials."
+                );
+            }
 
-        localStorage.setItem("token", data.access_token);
-        const role = data.user.role.toLowerCase();
-        
-        if (role === 'sender'){
-            router.push('/login');
-        } else if (role === 'receiver')  {
-            router.push('/receiver-dashboard');
-        }else{
-            router.push('/courier');
-        }
-       
-    } catch (error: unknown) {
-            const message = error instanceof Error ? error.message : 'Connection failed. Please try again.';
+            if (!data?.access_token) {
+                throw new Error(
+                    "Login succeeded but the backend did not return an access token."
+                );
+            }
+
+            // Save authentication information
+            localStorage.setItem("token", data.access_token);
+
+            if (data.user) {
+                localStorage.setItem(
+                    "user",
+                    JSON.stringify(data.user)
+                );
+            }
+
+            console.log(
+                "TOKEN SAVED:", localStorage.getItem("token")
+            );
+
+            const role = data.user?.role?.toUpperCase();
+
+            if (role === "SME") {
+                router.push("/dashboard");
+            } else if (role === "RECEIVER") {
+                router.push("/receiver");
+            } else if (role === "COURIER") {
+                router.push("/courier");
+            } else {
+                throw new Error(
+                    `Unknown user role returned by backend: ${role}`
+                );
+            }
+
+        } catch (error: unknown) {
+            console.error("LOGIN ERROR:", error);
+
+            const message =
+                error instanceof Error
+                    ? error.message
+                    : "Connection failed. Please try again.";
             setError(message);
-    } finally {
-        setLoading(false);
-    }
-    }
+
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <main className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-md  bg-white border border-slate-200 rounded-2xl shadow-xl p-6 md:p-8">
+            <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-xl p-6 md:p-8">
                 <div className="flex flex-col items-center mb-8">
                     <div className="p-3 bg-teal-50 rounded-2xl text-teal-700 mb-3">
                         <ShieldCheck size={32} />
@@ -62,50 +99,57 @@ export default function LoginPage() {
                 </div>
 
                 <form onSubmit={handleLogin} className="space-y-4">
-                {error && (
-                    <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-xl font-medium">
-                        <AlertTriangle />
-                        {error}
+                    {error && (
+                        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-xl font-medium flex items-center gap-2">
+                            <AlertTriangle size={18} className="shrink-0" />
+                            <span>{error}</span>
+                        </div>
+                    )}
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Email Address</label>
+                        <div className="relative">
+                            <Mail className='absolute left-3 top-3.5 text-slate-400' size={18}/>
+                            <input 
+                                type="email"
+                                required 
+                                value={email} 
+                                onChange={(e) => setEmail(e.target.value)}
+                                placeholder="email@youremail.com"
+                                className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all text-slate-900"
+                            />
+                        </div>
                     </div>
-                )}
-                <div className="space-y-1">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Email Address</label>
-                    <div className="relative">
-                        <Mail className='absolute left-3 top 3.5 text-slate-400' size={18}/>
-                        <input 
-                        type="email"
-                        required value = {email} 
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="email@youremail.com"
-                        className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-teal-500/20 focus:border-teal-500
-                        outline-none transition-all text-slate-900"
-                        />
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold uppercase tracking-wider text-slate-600">Password</label>
+                        <div className="relative">
+                            <Lock className='absolute left-3 top-3.5 text-slate-400' size={18}/>
+                            <input 
+                                type="password"
+                                required 
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="Put a secure password"
+                                className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all text-slate-900"
+                            />
+                        </div>
                     </div>
-                </div>
-                <div className="space-y-1">
-                    <label  className="text-xs font-bold uppercase tracking-wider text-slate-600">Password</label>
-                    <div className="relative">
-                        <Lock className='absolute left-3 top-3.5 text-slate-400' size={18}/>
-                        <input type="password"
-                        required value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Put a secure password"
-                        className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-teal-500/20 focus:border-teal-500
-                        outline-none transition-all text-slate-900"
-                        />
-                    </div>
-                </div>
-                <button 
-                type='submit'
-                disabled={loading}
-                className="w-full bg-teal-600 hover:bg-teal-700 text-white py-3.5 rounded-xl font-semibold transition-all shadow-md flex items-center justify-center gap-2 mt-2 disabled:opacity-50"
-                >
-                   {loading ? 'Authenticating...' : 'Sign In to Portal'}
-                   {!loading && <ArrowRight size={18} />}
-                </button>
+                    <button 
+                        type='submit'
+                        disabled={loading}
+                        className="w-full bg-teal-600 hover:bg-teal-700 text-white py-3.5 rounded-xl font-semibold transition-all shadow-md flex items-center justify-center gap-2 mt-2 disabled:opacity-50"
+                    >
+                        {loading ? 'Authenticating...' : 'Sign In to Portal'}
+                        {!loading && <ArrowRight size={18} />}
+                    </button>
                 </form> 
+
+                <p className="text-center text-xs text-slate-500 mt-6">
+                    Don&apos;t have an account?{' '}
+                    <Link href="/signup" className="text-teal-600 font-semibold hover:underline">
+                        Sign up
+                    </Link>
+                </p>
             </div>
         </main>
-    )
-
+    );
 }
