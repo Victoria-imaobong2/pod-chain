@@ -76,7 +76,11 @@ async def register(user_data: RegisterRequest, db: AsyncSession = Depends(get_db
         "email": new_user.email,
     }
 
-
+@app.on_event("startup")
+async def on_startup():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+        
 @app.post("/api/auth/login")
 async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):
     stmt = select(UserModel).where(UserModel.email == credentials.email)
