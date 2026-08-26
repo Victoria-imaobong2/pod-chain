@@ -5,16 +5,18 @@ from sqlalchemy.orm import declarative_base
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL",
+"postgresql+asyncpg://postgres:postgres@localhost:5432/podchain")
 
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable is not set.")
-SQLALCHEMY_DATABASE_URL = DATABASE_URL
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+elif DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith("postgresql+asyncpg://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 # 1. Create the ASYNC engine (Handles asyncpg driver)
 engine = create_async_engine(
-    SQLALCHEMY_DATABASE_URL,
-    echo=True, # Set to False in production if you want less log output
-)
+    DATABASE_URL,
+    echo=False)
+
 
 # 2. Create the ASYNC session factory
 AsyncSessionLocal = async_sessionmaker(

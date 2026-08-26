@@ -4,6 +4,7 @@ import os
 import traceback
 import hashlib
 import secrets
+import math
 
 from datetime import datetime, time
 from typing import Optional
@@ -49,12 +50,9 @@ class CreateParcelRecordRequest(BaseModel):
     receiver_email: str = ""
     receiver_phone: str
     destination_address: str
-
     pin: str = "000000"
-
     ipfs_hash: Optional[str] = ""
     tx_hash: Optional[str] = ""
-
     sender_wallet: Optional[str] = ""
 
 
@@ -79,6 +77,11 @@ class NotifyRequest(BaseModel):
     senderAddress: Optional[str] = ""
 
 
+class OTPRequest(BaseModel):
+    receiver_email: EmailStr
+    receiver_phone: str
+
+
 # ============================================================
 # EMAIL CONFIGURATION
 # ============================================================
@@ -96,27 +99,19 @@ conf = ConnectionConfig(
     TIMEOUT=15,
 )
 
+
 # ============================================================
 # GENERATE DELIVERY OTP
 # ============================================================
 
-class OTPRequest(BaseModel):
-    receiver_email: EmailStr
-    receiver_phone: str
-
-
 @router.post("/generate-otp")
 async def generate_otp(payload: OTPRequest):
     try:
-        # Generate 6-digit OTP
         raw_otp = f"{secrets.randbelow(1_000_000):06d}"
 
-        # Generate Ethereum-compatible Keccak-256 hash
         from Crypto.Hash import keccak
-
         k = keccak.new(digest_bits=256)
         k.update(raw_otp.encode("utf-8"))
-
         confirmation_hash = "0x" + k.hexdigest()
 
         # Send OTP email
@@ -127,33 +122,13 @@ async def generate_otp(payload: OTPRequest):
             <html>
                 <body style="font-family: Arial, sans-serif;">
                     <h2>Your POD Chain Delivery OTP</h2>
-
                     <p>Hello,</p>
-
                     <p>Your delivery verification OTP is:</p>
-
-                    <h1 style="
-                        letter-spacing: 8px;
-                        font-size: 32px;
-                    ">
-                        {raw_otp}
-                    </h1>
-
-                    <p>
-                        Give this OTP to the courier when your
-                        package is delivered.
-                    </p>
-
-                    <p>
-                        Do not share this code with anyone other
-                        than the courier handling your delivery.
-                    </p>
-
+                    <h1 style="letter-spacing: 8px; font-size: 32px;">{raw_otp}</h1>
+                    <p>Give this OTP to the courier when your package is delivered.</p>
+                    <p>Do not share this code with anyone other than the courier handling your delivery.</p>
                     <hr>
-
-                    <p>
-                        POD Chain - Decentralized Proof of Delivery
-                    </p>
+                    <p>POD Chain - Decentralized Proof of Delivery</p>
                 </body>
             </html>
             """,
@@ -161,7 +136,6 @@ async def generate_otp(payload: OTPRequest):
         )
 
         fm = FastMail(conf)
-
         await fm.send_message(message)
 
         return {
@@ -173,7 +147,6 @@ async def generate_otp(payload: OTPRequest):
         print("========== OTP ERROR ==========")
         traceback.print_exc()
         print("===============================")
-
         raise HTTPException(
             status_code=500,
             detail=f"Failed to generate delivery OTP: {str(e)}",
@@ -192,23 +165,12 @@ async def sync_parcel(
 ):
     """
     Saves a successfully created blockchain parcel into PostgreSQL.
-
-    Blockchain transaction happens FIRST on the frontend.
-    This endpoint records that transaction in the application DB.
     """
-
     try:
-        # ----------------------------------------------------
         # Prevent duplicate transaction records
-        # ----------------------------------------------------
-
         if data.tx_hash:
-            existing_tx_stmt = select(Parcel).where(
-                Parcel.tx_hash == data.tx_hash
-            )
-
+            existing_tx_stmt = select(Parcel).where(Parcel.tx_hash == data.tx_hash)
             existing_tx_result = await db.execute(existing_tx_stmt)
-
             existing_tx = existing_tx_result.scalar_one_or_none()
 
             if existing_tx:
@@ -222,21 +184,12 @@ async def sync_parcel(
                     },
                 }
 
-        # ----------------------------------------------------
         # Prevent duplicate tracking numbers
-        # ----------------------------------------------------
-
         existing_tracking_stmt = select(Parcel).where(
             Parcel.tracking_number == data.tracking_number
         )
-
-        existing_tracking_result = await db.execute(
-            existing_tracking_stmt
-        )
-
-        existing_tracking = (
-            existing_tracking_result.scalar_one_or_none()
-        )
+        existing_tracking_result = await db.execute(existing_tracking_stmt)
+        existing_tracking = existing_tracking_result.scalar_one_or_none()
 
         if existing_tracking:
             return {
@@ -249,38 +202,23 @@ async def sync_parcel(
                 },
             }
 
-        # ----------------------------------------------------
         # Create PostgreSQL record
-        # ----------------------------------------------------
-
         new_parcel = Parcel(
             tracking_number=data.tracking_number,
-
             sender_id=current_user["id"],
-
             contents_name=data.contents_name,
-
             receiver_email=data.receiver_email or "Not Provided",
-
             receiver_phone=data.receiver_phone,
-
             destination_address=data.destination_address,
-
             pin=data.pin,
-
             ipfs_hash=data.ipfs_hash or None,
-
             tx_hash=data.tx_hash or None,
-
             status="Created",
-
             proximity_checkpoint="Created",
         )
 
         db.add(new_parcel)
-
         await db.commit()
-
         await db.refresh(new_parcel)
 
         return {
@@ -299,11 +237,9 @@ async def sync_parcel(
 
     except Exception as e:
         await db.rollback()
-
         print("========== PARCEL SYNC ERROR ==========")
         traceback.print_exc()
         print("=======================================")
-
         raise HTTPException(
             status_code=500,
             detail=f"Failed to synchronize parcel: {str(e)}",
@@ -311,7 +247,7 @@ async def sync_parcel(
 
 
 # ============================================================
-# GET CURRENT USER SHIPMENTS
+# GET CURRENT USER (SENDER) SHIPMENTS
 # ============================================================
 
 @router.get("/user-shipments")
@@ -319,13 +255,10 @@ async def get_user_shipments(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     limit: Optional[int] = Query(None, ge=1, le=100),
-
     current_user: dict = Depends(get_current_user),
-
     db: AsyncSession = Depends(get_db),
 ):
     try:
-
         stmt = (
             select(Parcel)
             .where(Parcel.sender_id == current_user["id"])
@@ -333,87 +266,141 @@ async def get_user_shipments(
         )
 
         if start_date:
-            parsed_start = datetime.strptime(
-                start_date,
-                "%Y-%m-%d",
-            )
-
-            stmt = stmt.where(
-                Parcel.created_at >= parsed_start
-            )
+            parsed_start = datetime.strptime(start_date, "%Y-%m-%d")
+            stmt = stmt.where(Parcel.created_at >= parsed_start)
 
         if end_date:
             parsed_end = datetime.combine(
-                datetime.strptime(
-                    end_date,
-                    "%Y-%m-%d",
-                ).date(),
+                datetime.strptime(end_date, "%Y-%m-%d").date(),
                 time.max,
             )
-
-            stmt = stmt.where(
-                Parcel.created_at <= parsed_end
-            )
+            stmt = stmt.where(Parcel.created_at <= parsed_end)
 
         if limit:
             stmt = stmt.limit(limit)
 
         result = await db.execute(stmt)
-
         parcels = result.scalars().all()
 
         return [
             {
                 "id": parcel.id,
                 "tracking_number": parcel.tracking_number,
-
                 "contents_name": parcel.contents_name,
-
                 "receiver_email": parcel.receiver_email,
-
                 "receiver_phone": parcel.receiver_phone,
-
                 "destination_address": parcel.destination_address,
-
                 "courier_name": parcel.courier_name,
-
                 "courier_phone": parcel.courier_phone,
-
                 "courier_email": parcel.courier_email,
-
                 "courier_address": parcel.courier_address,
-
-                "proximity_checkpoint": (
-                    parcel.proximity_checkpoint
-                    or "Created"
-                ),
-
+                "proximity_checkpoint": parcel.proximity_checkpoint or "Created",
                 "status": parcel.status,
-
                 "ipfs_hash": parcel.ipfs_hash,
-
                 "tx_hash": parcel.tx_hash,
-
-                "created_at": parcel.created_at.isoformat()
-                if parcel.created_at
-                else None,
+                "created_at": parcel.created_at.isoformat() if parcel.created_at else None,
             }
-
             for parcel in parcels
         ]
 
     except ValueError:
-
         raise HTTPException(
             status_code=400,
             detail="Invalid date format. Use YYYY-MM-DD.",
         )
-
     except Exception as e:
-
         raise HTTPException(
             status_code=500,
             detail=f"Database query error: {str(e)}",
+        )
+
+
+# ============================================================
+# GET RECEIVER SHIPMENTS (MATCHED BY USER EMAIL)
+# ============================================================
+
+@router.get("/receiver-shipments")
+async def get_receiver_shipments(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Fetches all parcels addressed to the logged-in receiver's email.
+    """
+    try:
+        user_email = current_user["email"].strip().lower()
+
+        stmt = (
+            select(Parcel)
+            .where(Parcel.receiver_email.ilike(user_email))
+            .order_by(Parcel.created_at.desc())
+        )
+
+        result = await db.execute(stmt)
+        parcels = result.scalars().all()
+
+        return [
+            {
+                "id": parcel.id,
+                "tracking_number": parcel.tracking_number,
+                "contents_name": parcel.contents_name,
+                "receiver_email": parcel.receiver_email,
+                "receiver_phone": parcel.receiver_phone,
+                "destination_address": parcel.destination_address,
+                "courier_name": parcel.courier_name or "Assigning Courier...",
+                "courier_phone": parcel.courier_phone or "N/A",
+                "proximity_checkpoint": parcel.proximity_checkpoint or "Created",
+                "status": parcel.status,
+                "ipfs_hash": parcel.ipfs_hash,
+                "tx_hash": parcel.tx_hash,
+                "created_at": parcel.created_at.isoformat() if parcel.created_at else None,
+            }
+            for parcel in parcels
+        ]
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch receiver parcels: {str(e)}",
+        )
+
+
+# ============================================================
+# GET AVAILABLE PARCELS (FOR COURIER DISPATCH TERMINAL)
+# ============================================================
+
+@router.get("/available")
+async def get_available_parcels(db: AsyncSession = Depends(get_db)):
+    """
+    Returns all parcels waiting for a courier to accept them.
+    """
+    try:
+        stmt = (
+            select(Parcel)
+            .where(Parcel.status == "Created")
+            .order_by(Parcel.created_at.desc())
+        )
+        result = await db.execute(stmt)
+        parcels = result.scalars().all()
+
+        return [
+            {
+                "id": p.id,
+                "tracking_number": p.tracking_number,
+                "contents_name": p.contents_name,
+                "receiver_phone": p.receiver_phone,
+                "destination_address": p.destination_address,
+                "status": p.status,
+                "tx_hash": p.tx_hash,
+                "ipfs_hash": p.ipfs_hash,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+            }
+            for p in parcels
+        ]
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch available parcels: {str(e)}",
         )
 
 
@@ -424,17 +411,11 @@ async def get_user_shipments(
 @router.post("/{parcel_id}/accept")
 async def accept_parcel_job(
     parcel_id: int,
-
     data: AcceptParcelRequest,
-
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(Parcel).where(
-        Parcel.id == parcel_id
-    )
-
+    stmt = select(Parcel).where(Parcel.id == parcel_id)
     result = await db.execute(stmt)
-
     parcel = result.scalar_one_or_none()
 
     if not parcel:
@@ -444,34 +425,71 @@ async def accept_parcel_job(
         )
 
     parcel.status = "InTransit"
-
     parcel.courier_address = data.courier_wallet
-
     parcel.courier_phone = data.courier_phone
-
     parcel.courier_name = data.courier_name
-
     parcel.courier_email = data.courier_email
-
-    parcel.proximity_checkpoint = (
-        "Dispatched from Merchant"
-    )
+    parcel.proximity_checkpoint = "Dispatched from Merchant"
 
     await db.commit()
-
     await db.refresh(parcel)
 
     return {
         "message": f"Parcel {parcel_id} assigned to courier",
-
         "status": parcel.status,
-
         "courier_wallet": parcel.courier_address,
-
         "courier_name": parcel.courier_name,
-
     }
 
+def calculate_distance(lat1, lon1, lat2, lon2):
+    R = 6371.0 # Earth radius in kilometers
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
+
+class GPSLocationUpdate(BaseModel):
+    latitude: float
+    longitude: float
+
+@router.patch("/{parcel_id}/gps-ping")
+async def update_courier_gps(
+    parcel_id: int,
+    location: GPSLocationUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = select(Parcel).where(Parcel.id == parcel_id)
+    result = await db.execute(stmt)
+    parcel = result.scalar_one_or_none()
+
+    if not parcel:
+        raise HTTPException(status_code=404, detail="Parcel not found")
+
+    parcel.current_lat = location.latitude
+    parcel.current_lng = location.longitude
+
+    if parcel.dest_lat and parcel.dest_lng:
+        distance = calculate_distance(
+            location.latitude, location.longitude, 
+            parcel.dest_lat, parcel.dest_lng
+        )
+        parcel.distance_remaining_km = round(distance, 2)
+
+        # Automatic proximity checkpoint updates
+        if distance <= 0.2: # Under 200 meters
+            parcel.proximity_checkpoint = "Arrived at Destination"
+        elif distance <= 1.0: # Under 1 km
+            parcel.proximity_checkpoint = "Approaching Destination (<1km)"
+        else:
+            parcel.proximity_checkpoint = f"In Transit ({parcel.distance_remaining_km} km away)"
+
+    await db.commit()
+    return {
+        "status": "success",
+        "distance_remaining_km": parcel.distance_remaining_km,
+        "checkpoint": parcel.proximity_checkpoint
+    }
 
 # ============================================================
 # UPDATE PROXIMITY
@@ -480,17 +498,11 @@ async def accept_parcel_job(
 @router.patch("/{parcel_id}/proximity")
 async def update_proximity(
     parcel_id: int,
-
     data: ProximityUpdateRequest,
-
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(Parcel).where(
-        Parcel.id == parcel_id
-    )
-
+    stmt = select(Parcel).where(Parcel.id == parcel_id)
     result = await db.execute(stmt)
-
     parcel = result.scalar_one_or_none()
 
     if not parcel:
@@ -500,9 +512,7 @@ async def update_proximity(
         )
 
     parcel.proximity_checkpoint = data.checkpoint
-
     await db.commit()
-
     await db.refresh(parcel)
 
     return {
@@ -518,15 +528,10 @@ async def update_proximity(
 @router.get("/{parcel_id}/assigned-courier")
 async def get_assigned_courier(
     parcel_id: int,
-
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(Parcel).where(
-        Parcel.id == parcel_id
-    )
-
+    stmt = select(Parcel).where(Parcel.id == parcel_id)
     result = await db.execute(stmt)
-
     parcel = result.scalar_one_or_none()
 
     if not parcel:
@@ -537,31 +542,11 @@ async def get_assigned_courier(
 
     return {
         "parcel_id": parcel.id,
-
-        "courier_name": (
-            parcel.courier_name
-            or "Assigned Courier"
-        ),
-
-        "courier_phone": (
-            parcel.courier_phone
-            or "N/A"
-        ),
-
-        "courier_email": (
-            parcel.courier_email
-            or "N/A"
-        ),
-
-        "courier_wallet": (
-            parcel.courier_address
-            or "Not Assigned"
-        ),
-
-        "proximity_checkpoint": (
-            parcel.proximity_checkpoint
-            or "Dispatched"
-        ),
+        "courier_name": parcel.courier_name or "Assigned Courier",
+        "courier_phone": parcel.courier_phone or "N/A",
+        "courier_email": parcel.courier_email or "N/A",
+        "courier_wallet": parcel.courier_address or "Not Assigned",
+        "proximity_checkpoint": parcel.proximity_checkpoint or "Dispatched",
     }
 
 
@@ -574,11 +559,7 @@ async def process_delivery_secret(
     payload: NotifyRequest,
 ):
     try:
-
-        qr_data = (
-            f"POD_PARCEL:{payload.txHash}"
-            f"|PIN:{payload.pin}"
-        )
+        qr_data = f"POD_PARCEL:{payload.txHash}|PIN:{payload.pin}"
 
         qr = qrcode.QRCode(
             version=1,
@@ -586,78 +567,28 @@ async def process_delivery_secret(
             box_size=10,
             border=4,
         )
-
         qr.add_data(qr_data)
-
         qr.make(fit=True)
 
-        img = qr.make_image(
-            fill_color="black",
-            back_color="white",
-        )
+        img = qr.make_image(fill_color="black", back_color="white")
 
         buffered = io.BytesIO()
-
-        img.save(
-            buffered,
-            format="PNG",
-        )
-
+        img.save(buffered, format="PNG")
         img_bytes = buffered.getvalue()
 
-        qr_base64 = base64.b64encode(
-            img_bytes
-        ).decode("utf-8")
-
-        qr_data_url = (
-            f"data:image/png;base64,{qr_base64}"
-        )
+        qr_base64 = base64.b64encode(img_bytes).decode("utf-8")
+        qr_data_url = f"data:image/png;base64,{qr_base64}"
 
         return {
             "status": "success",
-
             "parcelId": payload.parcelId,
-
             "qrCodeUrl": qr_data_url,
-
-            "message": (
-                "Notification generated successfully."
-            ),
+            "message": "Notification generated successfully.",
         }
 
     except Exception as e:
-
         traceback.print_exc()
-
         raise HTTPException(
             status_code=500,
-            detail=(
-                f"Failed to generate QR notification: {str(e)}"
-            ),
+            detail=f"Failed to generate QR notification: {str(e)}",
         )
-
-    # Add this to backend/routers/parcels.py
-
-@router.get("/available")
-async def get_available_parcels(db: AsyncSession = Depends(get_db)):
-    """
-    Returns all parcels waiting for a courier to accept them.
-    """
-    stmt = select(Parcel).where(Parcel.status == "Created").order_by(Parcel.created_at.desc())
-    result = await db.execute(stmt)
-    parcels = result.scalars().all()
-    
-    return [
-        {
-            "id": p.id,
-            "tracking_number": p.tracking_number,
-            "contents_name": p.contents_name,
-            "receiver_phone": p.receiver_phone,
-            "destination_address": p.destination_address,
-            "status": p.status,
-            "tx_hash": p.tx_hash,
-            "ipfs_hash": p.ipfs_hash,
-            "created_at": p.created_at.isoformat() if p.created_at else None,
-        }
-        for p in parcels
-    ]

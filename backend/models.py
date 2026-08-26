@@ -3,6 +3,7 @@ import enum
 
 from sqlalchemy import (
     Column,
+    Float,
     Integer,
     String,
     Enum,
@@ -113,6 +114,13 @@ class Parcel(Base):
         default=datetime.utcnow,
         nullable=False,
     )
+
+   
+    dest_lat = Column(Float, nullable=True)
+    dest_lng = Column(Float, nullable=True)
+    current_lat = Column(Float, nullable=True)
+    current_lng = Column(Float, nullable=True)
+    distance_remaining_km = Column(Float, nullable=True)
 
 
 class UserModel(Base):
