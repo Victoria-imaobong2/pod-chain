@@ -364,7 +364,49 @@ async def get_receiver_shipments(
             detail=f"Failed to fetch receiver parcels: {str(e)}",
         )
 
+# ============================================================
+# GET ALL SHIPMENTS (FOR SENDER DASHBOARD & LEDGER)
+# ============================================================
 
+@router.get("")
+@router.get("/")
+async def get_all_parcels(
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns all parcel delivery records ordered by latest creation date.
+    """
+    try:
+        stmt = select(Parcel).order_by(Parcel.created_at.desc())
+        result = await db.execute(stmt)
+        parcels = result.scalars().all()
+
+        return [
+            {
+                "id": p.id,
+                "tracking_number": p.tracking_number,
+                "contents_name": p.contents_name,
+                "receiver_email": p.receiver_email,
+                "receiver_phone": p.receiver_phone,
+                "destination_address": p.destination_address,
+                "courier_name": p.courier_name or "Assigning Courier...",
+                "courier_phone": p.courier_phone or "N/A",
+                "courier_email": p.courier_email or "N/A",
+                "courier_address": p.courier_address,
+                "proximity_checkpoint": p.proximity_checkpoint or "Created",
+                "status": p.status,
+                "ipfs_hash": p.ipfs_hash,
+                "tx_hash": p.tx_hash,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+            }
+            for p in parcels
+        ]
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch parcels: {str(e)}",
+        )
+    
 # ============================================================
 # GET AVAILABLE PARCELS (FOR COURIER DISPATCH TERMINAL)
 # ============================================================

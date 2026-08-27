@@ -56,52 +56,76 @@ export default function CourierDashboard() {
   const [pinInput, setPinInput] = useState("");
   const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
 
-  const refreshParcels = useCallback(async () => {
+  const fetchAllParcels = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL || "http://127.0.0.1:8000"}/api/v1/parcels/available`);
-      if (res.ok) {
-        const data = await res.json();
-        setParcels(data);
-      }
-    } catch (err: unknown) {
-      console.error("Failed to load parcels from backend:", err);
+      const baseUrl = API_BASE_URL || "http://127.0.0.1:8000";
+
+      const [resAvailable, resAll] = await Promise.allSettled([
+        fetch(`${baseUrl}/api/v1/parcels/available`),
+        fetch(`${baseUrl}/api/v1/parcels/`),
+      ]);
+
+      const availableData =
+        resAvailable.status === "fulfilled" && resAvailable.value.ok
+          ? await resAvailable.value.json()
+          : [];
+      const allData =
+        resAll.status === "fulfilled" && resAll.value.ok
+          ? await resAll.value.json()
+          : [];
+
+      const combined = [...availableData, ...allData];
+      const uniqueMap = new Map<string, CourierParcel>();
+      combined.forEach((item) => uniqueMap.set(String(item.id), item));
+
+      return Array.from(uniqueMap.values());
+    } catch (err) {
+      console.error("Auto-sync polling failed:", err);
+      return [];
     }
   }, []);
 
   useEffect(() => {
-    let ignore = false;
+    let isMounted = true;
 
-    async function loadParcels() {
-      try {
-        const res = await fetch(`${API_BASE_URL || "http://127.0.0.1:8000"}/api/v1/parcels/available`);
-        if (res.ok) {
-          const data = await res.json();
-          if (!ignore) {
-            setParcels(data);
-          }
-        }
-      } catch (err: unknown) {
-        if (!ignore) {
-          console.error("Failed to load parcels from backend:", err);
-        }
+    const runFetch = async () => {
+      const data = await fetchAllParcels();
+      if (isMounted && data.length > 0) {
+        setParcels(data);
       }
-    }
+    };
 
-    void loadParcels();
+    void runFetch();
+    const interval = setInterval(() => {
+      void runFetch();
+    }, 4000);
 
     return () => {
-      ignore = true;
+      isMounted = false;
+      clearInterval(interval);
     };
-  }, []);
+  }, [fetchAllParcels]);
 
-  const availableParcels = parcels.filter((p) => p.status === "Created" || !p.status);
-  const activeParcels = parcels.filter(
-    (p) => p.status === "InTransit" && p.courier_address?.toLowerCase() === address?.toLowerCase()
+  const availableParcels = parcels.filter(
+    (p) => !p.status || p.status === "Created"
   );
+
+  const activeParcels = parcels.filter((p) => {
+    const isTransit = p.status === "InTransit";
+    if (!isTransit) return false;
+    if (!address || !p.courier_address) return true;
+    return p.courier_address.toLowerCase() === address.toLowerCase();
+  });
+
   const completedParcels = parcels.filter((p) => p.status === "Delivered");
 
-  const displayedParcels =
-    activeTab === "available" ? availableParcels : activeTab === "active" ? activeParcels : completedParcels;
+  const getDisplayedParcels = (): CourierParcel[] => {
+    if (activeTab === "available") return availableParcels;
+    if (activeTab === "active") return activeParcels;
+    return completedParcels;
+  };
+
+  const displayedParcels = getDisplayedParcels();
 
   const handleAcceptJob = async (parcelId: number | string) => {
     if (!isConnected || !address) {
@@ -110,7 +134,8 @@ export default function CourierDashboard() {
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL || "http://127.0.0.1:8000"}/api/v1/parcels/${parcelId}/accept`, {
+      const baseUrl = API_BASE_URL || "http://127.0.0.1:8000";
+      const res = await fetch(`${baseUrl}/api/v1/parcels/${parcelId}/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -121,8 +146,18 @@ export default function CourierDashboard() {
       });
 
       if (!res.ok) throw new Error("Could not accept job.");
-      await refreshParcels();
+
+      setParcels((prev) =>
+        prev.map((p) =>
+          String(p.id) === String(parcelId)
+            ? { ...p, status: "InTransit", courier_address: address }
+            : p
+        )
+      );
+
       setActiveTab("active");
+      const updated = await fetchAllParcels();
+      if (updated.length > 0) setParcels(updated);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "An error occurred";
       alert(msg);
@@ -131,7 +166,8 @@ export default function CourierDashboard() {
 
   const handleUpdateProximity = async (parcelId: number | string, checkpoint: string) => {
     try {
-      await fetch(`${API_BASE_URL || "http://127.0.0.1:8000"}/api/v1/parcels/${parcelId}/proximity`, {
+      const baseUrl = API_BASE_URL || "http://127.0.0.1:8000";
+      await fetch(`${baseUrl}/api/v1/parcels/${parcelId}/proximity`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ checkpoint }),
@@ -141,7 +177,7 @@ export default function CourierDashboard() {
         prev.map((p) => (p.id === parcelId ? { ...p, proximity_checkpoint: checkpoint } : p))
       );
 
-      if (selectedMapParcel && selectedMapParcel.id === parcelId) {
+      if (selectedMapParcel?.id === parcelId) {
         setSelectedMapParcel({ ...selectedMapParcel, proximity_checkpoint: checkpoint });
       }
     } catch (err: unknown) {
@@ -149,7 +185,7 @@ export default function CourierDashboard() {
     }
   };
 
-  const handleVerifyDelivery = async (e: React.FormEvent) => {
+  const handleVerifyDelivery = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedParcel || !isConnected) return;
 
@@ -162,10 +198,11 @@ export default function CourierDashboard() {
         setStatusMsg({ type: "success", text: "Escrow released successfully to your wallet!" });
         await handleUpdateProximity(selectedParcel.id, "Delivered");
         setPinInput("");
-        setTimeout(() => {
+        setTimeout(async () => {
           setSelectedParcel(null);
           setStatusMsg(null);
-          void refreshParcels();
+          const updated = await fetchAllParcels();
+          if (updated.length > 0) setParcels(updated);
         }, 2000);
       }
     } catch (err: unknown) {
@@ -184,7 +221,6 @@ export default function CourierDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-8 pb-32 max-w-7xl mx-auto font-sans antialiased">
-      {/* Header */}
       <header className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-200 pb-6 mb-6 gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -199,15 +235,15 @@ export default function CourierDashboard() {
         </div>
 
         <button
-          onClick={() => router.push("/courier/scan")}
-          className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition"
+          type="button"
+          onClick={() => router.push("/scan")}
+          className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition cursor-pointer"
         >
           <QrCode size={18} />
           <span>Launch Camera Scanner</span>
         </button>
       </header>
 
-      {/* Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <div className="bg-white p-5 border border-slate-200 rounded-2xl shadow-sm flex items-center justify-between">
           <div>
@@ -240,13 +276,13 @@ export default function CourierDashboard() {
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-2 text-xs font-semibold mb-4">
         {(["available", "active", "completed"] as const).map((tab) => (
           <button
             key={tab}
+            type="button"
             onClick={() => setActiveTab(tab)}
-            className={`px-3.5 py-1.5 rounded-full capitalize transition ${
+            className={`px-3.5 py-1.5 rounded-full capitalize transition cursor-pointer ${
               activeTab === tab ? "bg-slate-900 text-white font-bold" : "bg-slate-200 text-slate-600"
             }`}
           >
@@ -255,7 +291,6 @@ export default function CourierDashboard() {
         ))}
       </div>
 
-      {/* Parcels List */}
       <div className="space-y-4">
         {displayedParcels.length === 0 ? (
           <div className="p-12 bg-white border border-slate-200 rounded-2xl text-center space-y-2">
@@ -293,8 +328,9 @@ export default function CourierDashboard() {
 
                 {activeTab === "available" && (
                   <button
+                    type="button"
                     onClick={() => handleAcceptJob(parcel.id)}
-                    className="flex items-center gap-1 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl"
+                    className="flex items-center gap-1 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl cursor-pointer"
                   >
                     <Check size={14} /> Accept Job
                   </button>
@@ -303,14 +339,16 @@ export default function CourierDashboard() {
                 {activeTab === "active" && (
                   <>
                     <button
+                      type="button"
                       onClick={() => setSelectedMapParcel(parcel)}
-                      className="flex items-center gap-1 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl"
+                      className="flex items-center gap-1 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl cursor-pointer"
                     >
                       <Navigation size={14} className="text-teal-600" /> Map
                     </button>
                     <button
+                      type="button"
                       onClick={() => setSelectedParcel(parcel)}
-                      className="flex items-center gap-1 px-4 py-2 bg-slate-950 text-white text-xs font-bold rounded-xl"
+                      className="flex items-center gap-1 px-4 py-2 bg-slate-950 hover:bg-slate-900 text-white text-xs font-bold rounded-xl cursor-pointer"
                     >
                       <ShieldCheck size={14} /> Verify OTP
                     </button>
@@ -322,25 +360,26 @@ export default function CourierDashboard() {
         )}
       </div>
 
-      {/* Map Modal with Free Leaflet Map */}
       {selectedMapParcel && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-lg bg-white rounded-2xl p-6 border shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b pb-3">
               <h3 className="font-black text-slate-900 text-lg">Route & Proximity Telemetry</h3>
-              <button onClick={() => setSelectedMapParcel(null)} className="text-slate-400 hover:text-slate-600">
+              <button
+                type="button"
+                onClick={() => setSelectedMapParcel(null)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
                 <X size={20} />
               </button>
             </div>
 
-            {/* Free Leaflet Map */}
             <FreeRouteMap
               lat={5.4851}
               lng={7.0353}
               label={selectedMapParcel.destination_address || "Delivery Location"}
             />
 
-            {/* Checkpoint Controls */}
             <div className="space-y-2">
               <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">
                 Update Checkpoint
@@ -349,8 +388,9 @@ export default function CourierDashboard() {
                 {["Picked Up", "0.8km Away", "Arrived at Location"].map((checkpoint) => (
                   <button
                     key={checkpoint}
+                    type="button"
                     onClick={() => handleUpdateProximity(selectedMapParcel.id, checkpoint)}
-                    className={`p-2 rounded-xl font-bold border transition ${
+                    className={`p-2 rounded-xl font-bold border transition cursor-pointer ${
                       selectedMapParcel.proximity_checkpoint === checkpoint
                         ? "bg-teal-600 text-white border-teal-600"
                         : "bg-slate-50 border-slate-200 text-slate-700"
@@ -363,8 +403,9 @@ export default function CourierDashboard() {
             </div>
 
             <button
+              type="button"
               onClick={() => setSelectedMapParcel(null)}
-              className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl text-sm"
+              className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl text-sm cursor-pointer"
             >
               Done
             </button>
@@ -372,13 +413,16 @@ export default function CourierDashboard() {
         </div>
       )}
 
-      {/* OTP Delivery Verification Modal */}
       {selectedParcel && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white rounded-2xl p-6 border shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b pb-3">
               <h3 className="font-black text-slate-900 text-lg">Confirm Delivery Handoff</h3>
-              <button onClick={() => setSelectedParcel(null)} className="text-slate-400 hover:text-slate-600">
+              <button
+                type="button"
+                onClick={() => setSelectedParcel(null)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
                 <X size={20} />
               </button>
             </div>
@@ -411,7 +455,7 @@ export default function CourierDashboard() {
               <button
                 type="submit"
                 disabled={isPending || pinInput.length !== 6}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-sm disabled:opacity-50"
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-sm disabled:opacity-50 cursor-pointer"
               >
                 {isPending ? "Executing On-Chain Settlement..." : "Release Escrow Payout"}
               </button>

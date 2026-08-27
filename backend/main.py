@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from sqlalchemy.future import select
 
 from database import Base, engine, get_db
@@ -80,6 +81,17 @@ async def register(user_data: RegisterRequest, db: AsyncSession = Depends(get_db
 async def on_startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        # Alter table to add new geolocation columns if missing
+        alter_queries = [
+            "ALTER TABLE parcels ADD COLUMN IF NOT EXISTS dest_lat DOUBLE PRECISION;",
+            "ALTER TABLE parcels ADD COLUMN IF NOT EXISTS dest_lng DOUBLE PRECISION;",
+            "ALTER TABLE parcels ADD COLUMN IF NOT EXISTS current_lat DOUBLE PRECISION;",
+            "ALTER TABLE parcels ADD COLUMN IF NOT EXISTS current_lng DOUBLE PRECISION;",
+            "ALTER TABLE parcels ADD COLUMN IF NOT EXISTS distance_remaining_km DOUBLE PRECISION;",
+        ]
+        for query in alter_queries:
+            await conn.execute(text(query))
         
 @app.post("/api/auth/login")
 async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):

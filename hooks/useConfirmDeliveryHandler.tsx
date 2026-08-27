@@ -3,7 +3,7 @@
 import { useWriteContract, useAccount, usePublicClient } from "wagmi";
 import { DeliveryEscrowABI } from "../lib/abi/DeliveryEscrow";
 
-const CONTRACT_ADDRESS = "0x5fbdb2315678afecb367f032d93f642f64180aa3";
+const CONTRACT_ADDRESS = "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0" as `0x${string}`;
 
 export function useConfirmDeliveryHandler() {
   const { writeContractAsync, isPending } = useWriteContract();
