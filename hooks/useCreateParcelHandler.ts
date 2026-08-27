@@ -14,7 +14,7 @@ import { API_BASE_URL } from "../lib/config";
 type HexAddress = `0x${string}`;
 
 const CONTRACT_ADDRESS =
-  "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0" as HexAddress;
+  "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6" as HexAddress;
 
 type ParcelFormData = {
   receiverEmail: string;

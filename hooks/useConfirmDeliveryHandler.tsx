@@ -3,7 +3,7 @@
 import { useWriteContract, useAccount, usePublicClient } from "wagmi";
 import { DeliveryEscrowABI } from "../lib/abi/DeliveryEscrow";
 
-const CONTRACT_ADDRESS = "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0" as `0x${string}`;
+const CONTRACT_ADDRESS = "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6" as `0x${string}`;
 
 export function useConfirmDeliveryHandler() {
   const { writeContractAsync, isPending } = useWriteContract();
@@ -18,10 +18,11 @@ export function useConfirmDeliveryHandler() {
     try {
       // Execute the smart contract function to verify PIN and release escrow payout
       const txHash = await writeContractAsync({
-        address: CONTRACT_ADDRESS as `0x${string}`,
+        address: CONTRACT_ADDRESS,
         abi: DeliveryEscrowABI,
         functionName: "confirmDeliveryWithCode",
         args: [BigInt(parcelIdNumeric), rawPin],
+        gas: BigInt(300000), // Explicitly limits gas well below the node's 16.77M cap
       });
 
       console.log("Delivery verification transaction sent! Hash:", txHash);

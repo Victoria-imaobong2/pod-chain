@@ -185,12 +185,24 @@ export default function CourierDashboard() {
     }
   };
 
-  const handleVerifyDelivery = async (e: React.FormEvent<HTMLFormElement>) => {
+ const handleVerifyDelivery = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedParcel || !isConnected) return;
 
     setStatusMsg({ type: "info", text: "Submitting proof of delivery on-chain..." });
-    const numericId = Number(String(selectedParcel.id).replace(/\D/g, "")) || 1;
+
+    // Extract raw numeric ID from selected parcel
+    // e.g., if selectedParcel.id is 1 or "1" -> 1
+    const rawId = typeof selectedParcel.id === "number" 
+      ? selectedParcel.id 
+      : parseInt(String(selectedParcel.id).replace(/\D/g, ""), 10);
+
+    // If your smart contract is 0-indexed (first parcel is 0, second is 1), 
+    // and your DB started at 1, use: Math.max(0, rawId - 1)
+    // If your smart contract is 1-indexed, use: rawId || 1
+    const numericId = isNaN(rawId) ? 0 : rawId;
+
+    console.log("--> Calling confirmDeliveryWithCode for Parcel ID:", numericId, "with PIN:", pinInput);
 
     try {
       const result = await handleConfirmDelivery(numericId, pinInput);
@@ -206,6 +218,7 @@ export default function CourierDashboard() {
         }, 2000);
       }
     } catch (err: unknown) {
+      console.error("Delivery settlement failed:", err);
       const msg = err instanceof Error ? err.message : "Confirmation failed";
       setStatusMsg({ type: "error", text: msg });
     }
