@@ -171,10 +171,6 @@ export default function ReceiverDashboard() {
     );
   }
 
-  if (!isMounted) {
-    return null;
-  }
-
   const activeAlertsCount = notifications.filter((n) => n.active).length;
 
   const dismissNotification = (id: string) => {
