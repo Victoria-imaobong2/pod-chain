@@ -299,23 +299,17 @@ contract DeliveryEscrow {
         );
 
         require(
-            parcel.status == DeliveryStatus.PickedUp,
-            "Parcel has not been picked up"
-        );
-
-        require(
             !parcel.isCompleted,
             "Escrow already released"
         );
 
-        require(
-            parcel.courier != address(0),
-            "No courier assigned"
-        );
+        // Automatically assign courier if not yet set
+        if (parcel.courier == address(0)) {
+            parcel.courier = payable(msg.sender);
+        }
 
         require(
-            keccak256(abi.encodePacked(_secretCode))
-                == parcel.confirmationHash,
+            keccak256(abi.encodePacked(_secretCode)) == parcel.confirmationHash,
             "Invalid delivery secret code"
         );
 

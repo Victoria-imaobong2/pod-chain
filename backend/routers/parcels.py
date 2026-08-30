@@ -99,6 +99,10 @@ conf = ConnectionConfig(
     TIMEOUT=15,
 )
 
+class ConfirmDeliveryRequest(BaseModel):
+    tx_hash: Optional[str] = None
+    delivery_code: Optional[str] = None
+
 
 # ============================================================
 # GENERATE DELIVERY OTP
@@ -634,3 +638,36 @@ async def process_delivery_secret(
             status_code=500,
             detail=f"Failed to generate QR notification: {str(e)}",
         )
+
+@router.post("/{parcel_id}/confirm-delivery")
+async def confirm_delivery_complete(
+    parcel_id: int,
+    data: ConfirmDeliveryRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Marks the parcel as Delivered in PostgreSQL after on-chain escrow release.
+    """
+    stmt = select(Parcel).where(Parcel.id == parcel_id)
+    result = await db.execute(stmt)
+    parcel = result.scalar_one_or_none()
+
+    if not parcel:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Parcel with ID {parcel_id} not found",
+        )
+
+    parcel.status = "Delivered"
+    parcel.proximity_checkpoint = "Delivered"
+    if data.tx_hash:
+        parcel.tx_hash = data.tx_hash
+
+    await db.commit()
+    await db.refresh(parcel)
+
+    return {
+        "message": f"Parcel {parcel_id} marked as Delivered",
+        "status": parcel.status,
+        "proximity_checkpoint": parcel.proximity_checkpoint,
+    }

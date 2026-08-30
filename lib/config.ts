@@ -8,4 +8,4 @@
  */
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
-  export const CONTRACT_ADDRESS = "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6" as `0x${string}`;
+  export const CONTRACT_ADDRESS = "0x5fbdb2315678afecb367f032d93f642f64180aa3" as `0x${string}`;

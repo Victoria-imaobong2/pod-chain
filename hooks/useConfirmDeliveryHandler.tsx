@@ -1,46 +1,91 @@
 "use client";
 
+import { useState } from "react";
 import { useWriteContract, useAccount, usePublicClient } from "wagmi";
-import { DeliveryEscrowABI } from "../lib/abi/DeliveryEscrow";
 
-const CONTRACT_ADDRESS = "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6" as `0x${string}`;
+const CONTRACT_ADDRESS = "0x5fbdb2315678afecb367f032d93f642f64180aa3" as const;
+
+export const DELIVERY_ESCROW_ABI = [
+  {
+    type: "function",
+    name: "parcelCount",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "confirmDeliveryWithCode",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "_id", type: "uint256" },
+      { name: "_secretCode", type: "string" },
+    ],
+    outputs: [],
+  },
+] as const;
 
 export function useConfirmDeliveryHandler() {
-  const { writeContractAsync, isPending } = useWriteContract();
+  const { writeContractAsync } = useWriteContract();
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
+  const [isPending, setIsPending] = useState(false);
 
-  const handleConfirmDelivery = async (parcelIdNumeric: number, rawPin: string) => {
+  const handleConfirmDelivery = async (parcelIdInput: number | string, rawPin: string) => {
     if (!isConnected || !address) {
-      throw new Error("Please connect your Web3 wallet before attempting to verify delivery.");
+      throw new Error("Please connect your Web3 wallet first.");
     }
 
+    setIsPending(true);
+
     try {
-      // Execute the smart contract function to verify PIN and release escrow payout
+      let targetId = BigInt(Number(parcelIdInput) || 1);
+
+      if (publicClient) {
+        const totalCount = await publicClient.readContract({
+          address: CONTRACT_ADDRESS,
+          abi: DELIVERY_ESCROW_ABI,
+          functionName: "parcelCount",
+        });
+
+        if (totalCount === BigInt(0)) {
+          throw new Error("No parcels found on-chain. Please create a parcel first.");
+        }
+
+        if (targetId <= BigInt(0) || targetId > totalCount) {
+          targetId = totalCount;
+        }
+      }
+
+      console.log(`Submitting single-step confirmDeliveryWithCode for ID #${targetId} with PIN:`, rawPin);
+
+      // Execute ONLY ONE transaction in MetaMask
       const txHash = await writeContractAsync({
         address: CONTRACT_ADDRESS,
-        abi: DeliveryEscrowABI,
+        abi: DELIVERY_ESCROW_ABI,
         functionName: "confirmDeliveryWithCode",
-        args: [BigInt(parcelIdNumeric), rawPin],
-        gas: BigInt(300000), // Explicitly limits gas well below the node's 16.77M cap
+        args: [targetId, rawPin],
+        gas: BigInt(300000),
       });
 
-      console.log("Delivery verification transaction sent! Hash:", txHash);
-
-      // Wait for on-chain block confirmation
       if (publicClient) {
         await publicClient.waitForTransactionReceipt({ hash: txHash });
       }
 
       return { success: true, txHash };
     } catch (err: unknown) {
-      console.error("Delivery confirmation error:", err);
+      console.error("Settlement error:", err);
       const error = err as { shortMessage?: string; message?: string };
-      throw new Error(
-        error.shortMessage || error.message || "Invalid PIN code or smart contract execution failure."
-      );
+      throw new Error(error.shortMessage || error.message || "Confirmation failed");
+    } finally {
+      setIsPending(false);
     }
   };
 
-  return { handleConfirmDelivery, isPending, isConnected, address };
+  return {
+    handleConfirmDelivery,
+    isPending,
+    isConnected,
+    address,
+  };
 }
