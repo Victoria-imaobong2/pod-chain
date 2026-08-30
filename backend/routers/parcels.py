@@ -28,6 +28,7 @@ from fastapi_mail import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import func
 
 from database import get_db
 from models import Parcel
@@ -332,11 +333,13 @@ async def get_receiver_shipments(
     Fetches all parcels addressed to the logged-in receiver's email.
     """
     try:
-        user_email = current_user["email"].strip().lower()
+        user_email = current_user.get("email", "").strip().lower()
 
         stmt = (
             select(Parcel)
-            .where(Parcel.receiver_email.ilike(user_email))
+            .where(
+                func.trim(func.lower(Parcel.receiver_email)) == user_email
+            )
             .order_by(Parcel.created_at.desc())
         )
 
@@ -355,6 +358,7 @@ async def get_receiver_shipments(
                 "courier_phone": parcel.courier_phone or "N/A",
                 "proximity_checkpoint": parcel.proximity_checkpoint or "Created",
                 "status": parcel.status,
+                "pin": parcel.pin,  # <--- Return the actual stored delivery PIN
                 "ipfs_hash": parcel.ipfs_hash,
                 "tx_hash": parcel.tx_hash,
                 "created_at": parcel.created_at.isoformat() if parcel.created_at else None,
@@ -363,6 +367,7 @@ async def get_receiver_shipments(
         ]
 
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(
             status_code=500,
             detail=f"Failed to fetch receiver parcels: {str(e)}",

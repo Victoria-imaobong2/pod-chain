@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useSyncExternalStore } from "react";
+import React, { useState, useEffect, useCallback, useSyncExternalStore, useMemo } from "react";
 import { Package, Bell, MapPin, QrCode, X, Navigation } from "lucide-react";
 import StatusBadge from "@/components/shared/StatusBadge";
 import BottomNavReceiver from "@/components/navigation/BottomNavReceiver";
@@ -57,6 +57,7 @@ export default function ReceiverDashboard() {
   );
 
   const [shipments, setShipments] = useState<Shipment[]>([]);
+  const [dismissedNotifIds, setDismissedNotifIds] = useState<string[]>([]);
   const [profile, setProfile] = useState<ReceiverProfile>(() => {
     if (typeof window === "undefined") return DEFAULT_PROFILE;
     const saved = localStorage.getItem("pod_receiver_profile");
@@ -68,7 +69,6 @@ export default function ReceiverDashboard() {
     }
   });
 
-  const [notifications, setNotifications] = useState<DynamicNotification[]>([]);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isTrackModalOpen, setIsTrackModalOpen] = useState(false);
   const [isVerifyRiderOpen, setIsVerifyRiderOpen] = useState(false);
@@ -77,17 +77,17 @@ export default function ReceiverDashboard() {
   const [selectedKeyParcel, setSelectedKeyParcel] = useState<Shipment | null>(null);
   const [inputHash, setInputHash] = useState("");
 
-  const syncDynamicNotifications = useCallback((currentShipments: Shipment[]) => {
+  const notifications = useMemo(() => {
     const derivedAlerts: DynamicNotification[] = [];
 
-    currentShipments.forEach((s) => {
+    shipments.forEach((s) => {
       if (s.status === "Delivered") {
         derivedAlerts.push({
           id: `notif-del-${s.id}`,
           type: "delivered",
           message: `Package ${s.id} (${s.item || "Consignment"}) has been verified and delivered!`,
           timestamp: s.timestamp || "Just now",
-          active: true,
+          active: !dismissedNotifIds.includes(`notif-del-${s.id}`),
         });
       } else if (s.status === "InTransit") {
         derivedAlerts.push({
@@ -95,7 +95,7 @@ export default function ReceiverDashboard() {
           type: "proximity",
           message: `Rider is nearby with ${s.id}! Checkpoint: ${s.proximity_checkpoint || "Approaching destination"}.`,
           timestamp: s.timestamp || "Active",
-          active: true,
+          active: !dismissedNotifIds.includes(`notif-prox-${s.id}`),
         });
       } else {
         derivedAlerts.push({
@@ -103,13 +103,13 @@ export default function ReceiverDashboard() {
           type: "creation",
           message: `New package ${s.id} initialized in escrow ledger.`,
           timestamp: s.timestamp || "Recent",
-          active: true,
+          active: !dismissedNotifIds.includes(`notif-created-${s.id}`),
         });
       }
     });
 
-    setNotifications(derivedAlerts);
-  }, []);
+    return derivedAlerts;
+  }, [shipments, dismissedNotifIds]);
 
   const fetchReceiverShipments = useCallback(async () => {
     try {
@@ -140,6 +140,7 @@ export default function ReceiverDashboard() {
           hash: item.tx_hash
             ? item.tx_hash.substring(0, 6) + "..." + item.tx_hash.substring(item.tx_hash.length - 4)
             : "0x...",
+          pin: item.pin || "000000",
           address: item.destination_address || profile.address,
           courierName: item.courier_name || "Assigning Courier...",
           courierPhone: item.courier_phone || "N/A",
@@ -147,17 +148,20 @@ export default function ReceiverDashboard() {
         }));
 
         setShipments(mapped);
-        syncDynamicNotifications(mapped);
       }
     } catch (err) {
       console.error("Failed to load receiver shipments:", err);
     }
-  }, [profile.address, syncDynamicNotifications]);
+  }, [profile.address]);
 
   useEffect(() => {
-    void fetchReceiverShipments();
+    const run = async () => {
+      await fetchReceiverShipments();
+    };
+    void run();
+
     const interval = setInterval(() => {
-      void fetchReceiverShipments();
+      void run();
     }, 4000);
 
     return () => clearInterval(interval);
@@ -174,7 +178,7 @@ export default function ReceiverDashboard() {
   const activeAlertsCount = notifications.filter((n) => n.active).length;
 
   const dismissNotification = (id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, active: false } : n)));
+    setDismissedNotifIds((prev) => [...prev, id]);
   };
 
   const handleSaveProfile = (updated: ReceiverProfile) => {
