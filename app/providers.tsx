@@ -18,7 +18,7 @@ import "@rainbow-me/rainbowkit/styles.css";
 
 const config = getDefaultConfig({
   appName: "POD Chain Logistics",
-  projectId: "ff747dfbea36ec05c5b46a631150a909",
+  projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "ff747dfbea36ec05c5b46a631150a909",
   chains: [hardhat, baseSepolia, base],
   transports: {
     [hardhat.id]: http("http://127.0.0.1:8545"),
