@@ -1,26 +1,60 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from sqlalchemy.future import select
 
+# Model & Database imports
 from database import Base, engine, get_db
-from models import UserModel, UserRole
+import models
+from models import UserModel, Parcel, UserRole
 from auth_utils import verify_password, hash_password, create_access_token
 from routers.parcels import router as parcel_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 1. Initialize all database tables in Neon
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+        # 2. Add any missing geolocation/telemetry columns safely
+        alter_queries = [
+            "ALTER TABLE parcels ADD COLUMN IF NOT EXISTS dest_lat DOUBLE PRECISION;",
+            "ALTER TABLE parcels ADD COLUMN IF NOT EXISTS dest_lng DOUBLE PRECISION;",
+            "ALTER TABLE parcels ADD COLUMN IF NOT EXISTS current_lat DOUBLE PRECISION;",
+            "ALTER TABLE parcels ADD COLUMN IF NOT EXISTS current_lng DOUBLE PRECISION;",
+            "ALTER TABLE parcels ADD COLUMN IF NOT EXISTS distance_remaining_km DOUBLE PRECISION;",
+        ]
+        for query in alter_queries:
+            try:
+                await conn.execute(text(query))
+            except Exception as e:
+                print(f"Migration note: {e}")
+
+    yield
+
+    # Cleanup on shutdown
+    await engine.dispose()
+
 
 app = FastAPI(
     title="PodChain Auth Service",
     description="API for PodChain Application",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -32,7 +66,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     name: str
     password: str
-    role: UserRole = UserRole.SME  # Default role or passed from frontend
+    role: UserRole = UserRole.SME
     phone_number: str | None = None
     wallet_address: str | None = None
 
@@ -46,7 +80,6 @@ class LoginRequest(BaseModel):
 
 @app.post("/api/auth/register", status_code=status.HTTP_201_CREATED)
 async def register(user_data: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    # Check if user already exists
     stmt = select(UserModel).where(UserModel.email == user_data.email)
     result = await db.execute(stmt)
     db_user = result.scalar_one_or_none()
@@ -57,7 +90,6 @@ async def register(user_data: RegisterRequest, db: AsyncSession = Depends(get_db
             detail="Email is already registered. Login or use a different email address.",
         )
 
-    # Single clean instantiation
     new_user = UserModel(
         name=user_data.name,
         email=user_data.email,
@@ -77,22 +109,7 @@ async def register(user_data: RegisterRequest, db: AsyncSession = Depends(get_db
         "email": new_user.email,
     }
 
-@app.on_event("startup")
-async def on_startup():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
 
-        # Alter table to add new geolocation columns if missing
-        alter_queries = [
-            "ALTER TABLE parcels ADD COLUMN IF NOT EXISTS dest_lat DOUBLE PRECISION;",
-            "ALTER TABLE parcels ADD COLUMN IF NOT EXISTS dest_lng DOUBLE PRECISION;",
-            "ALTER TABLE parcels ADD COLUMN IF NOT EXISTS current_lat DOUBLE PRECISION;",
-            "ALTER TABLE parcels ADD COLUMN IF NOT EXISTS current_lng DOUBLE PRECISION;",
-            "ALTER TABLE parcels ADD COLUMN IF NOT EXISTS distance_remaining_km DOUBLE PRECISION;",
-        ]
-        for query in alter_queries:
-            await conn.execute(text(query))
-        
 @app.post("/api/auth/login")
 async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):
     stmt = select(UserModel).where(UserModel.email == credentials.email)
@@ -105,7 +122,6 @@ async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):
             detail="Invalid email or password, retry with correct credentials.",
         )
 
-    # Encode user details into JWT token
     token_data = {
         "sub": user.email,
         "id": user.id,

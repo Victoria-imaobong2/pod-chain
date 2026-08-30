@@ -51,7 +51,7 @@ class CreateParcelRecordRequest(BaseModel):
     receiver_email: str = ""
     receiver_phone: str
     destination_address: str
-    pin: str = "000000"
+    pin: Optional[str] = None
     ipfs_hash: Optional[str] = ""
     tx_hash: Optional[str] = ""
     sender_wallet: Optional[str] = ""
@@ -82,6 +82,10 @@ class OTPRequest(BaseModel):
     receiver_email: EmailStr
     receiver_phone: str
 
+class OTPResponse(BaseModel):
+    status: str
+    confirmationHash: str
+    # rawPin is omitted or returned strictly for testing/dev environments
 
 # ============================================================
 # EMAIL CONFIGURATION
@@ -146,6 +150,7 @@ async def generate_otp(payload: OTPRequest):
         return {
             "status": "success",
             "confirmationHash": confirmation_hash,
+            "rawPin": raw_otp,
         }
 
     except Exception as e:
@@ -249,10 +254,8 @@ async def sync_parcel(
             status_code=500,
             detail=f"Failed to synchronize parcel: {str(e)}",
         )
-
-
 # ============================================================
-# GET CURRENT USER (SENDER) SHIPMENTS
+# SENDER SHIPMENTS (STRICT USER ISOLATION)
 # ============================================================
 
 @router.get("/user-shipments")
@@ -263,6 +266,9 @@ async def get_user_shipments(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Returns only parcels created by the currently authenticated sender.
+    """
     try:
         stmt = (
             select(Parcel)
@@ -289,39 +295,35 @@ async def get_user_shipments(
 
         return [
             {
-                "id": parcel.id,
-                "tracking_number": parcel.tracking_number,
-                "contents_name": parcel.contents_name,
-                "receiver_email": parcel.receiver_email,
-                "receiver_phone": parcel.receiver_phone,
-                "destination_address": parcel.destination_address,
-                "courier_name": parcel.courier_name,
-                "courier_phone": parcel.courier_phone,
-                "courier_email": parcel.courier_email,
-                "courier_address": parcel.courier_address,
-                "proximity_checkpoint": parcel.proximity_checkpoint or "Created",
-                "status": parcel.status,
-                "ipfs_hash": parcel.ipfs_hash,
-                "tx_hash": parcel.tx_hash,
-                "created_at": parcel.created_at.isoformat() if parcel.created_at else None,
+                "id": p.id,
+                "tracking_number": p.tracking_number,
+                "contents_name": p.contents_name,
+                "receiver_email": p.receiver_email,
+                "receiver_phone": p.receiver_phone,
+                "destination_address": p.destination_address,
+                "courier_name": p.courier_name or "Assigning Courier...",
+                "courier_phone": p.courier_phone or "N/A",
+                "courier_email": p.courier_email or "N/A",
+                "courier_address": p.courier_address,
+                "proximity_checkpoint": p.proximity_checkpoint or "Created",
+                "status": p.status,
+                "ipfs_hash": p.ipfs_hash,
+                "tx_hash": p.tx_hash,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
             }
-            for parcel in parcels
+            for p in parcels
         ]
-
-    except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid date format. Use YYYY-MM-DD.",
-        )
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=f"Database query error: {str(e)}",
         )
 
+    
+
 
 # ============================================================
-# GET RECEIVER SHIPMENTS (MATCHED BY USER EMAIL)
+# RECEIVER SHIPMENTS (STRICT EMAIL ISOLATION)
 # ============================================================
 
 @router.get("/receiver-shipments")
@@ -330,16 +332,16 @@ async def get_receiver_shipments(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Fetches all parcels addressed to the logged-in receiver's email.
+    Returns only parcels explicitly addressed to the logged-in receiver's email.
     """
     try:
         user_email = current_user.get("email", "").strip().lower()
+        if not user_email:
+            return []
 
         stmt = (
             select(Parcel)
-            .where(
-                func.trim(func.lower(Parcel.receiver_email)) == user_email
-            )
+            .where(func.trim(func.lower(Parcel.receiver_email)) == user_email)
             .order_by(Parcel.created_at.desc())
         )
 
@@ -348,31 +350,29 @@ async def get_receiver_shipments(
 
         return [
             {
-                "id": parcel.id,
-                "tracking_number": parcel.tracking_number,
-                "contents_name": parcel.contents_name,
-                "receiver_email": parcel.receiver_email,
-                "receiver_phone": parcel.receiver_phone,
-                "destination_address": parcel.destination_address,
-                "courier_name": parcel.courier_name or "Assigning Courier...",
-                "courier_phone": parcel.courier_phone or "N/A",
-                "proximity_checkpoint": parcel.proximity_checkpoint or "Created",
-                "status": parcel.status,
-                "pin": parcel.pin,  # <--- Return the actual stored delivery PIN
-                "ipfs_hash": parcel.ipfs_hash,
-                "tx_hash": parcel.tx_hash,
-                "created_at": parcel.created_at.isoformat() if parcel.created_at else None,
+                "id": p.id,
+                "tracking_number": p.tracking_number,
+                "contents_name": p.contents_name,
+                "receiver_email": p.receiver_email,
+                "receiver_phone": p.receiver_phone,
+                "destination_address": p.destination_address,
+                "courier_name": p.courier_name or "Assigning Courier...",
+                "courier_phone": p.courier_phone or "N/A",
+                "proximity_checkpoint": p.proximity_checkpoint or "Created",
+                "status": p.status,
+                "pin": p.pin,
+                "ipfs_hash": p.ipfs_hash,
+                "tx_hash": p.tx_hash,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
             }
-            for parcel in parcels
+            for p in parcels
         ]
-
     except Exception as e:
-        traceback.print_exc()
         raise HTTPException(
             status_code=500,
             detail=f"Failed to fetch receiver parcels: {str(e)}",
         )
-
+    
 # ============================================================
 # GET ALL SHIPMENTS (FOR SENDER DASHBOARD & LEDGER)
 # ============================================================
@@ -454,6 +454,49 @@ async def get_available_parcels(db: AsyncSession = Depends(get_db)):
             detail=f"Failed to fetch available parcels: {str(e)}",
         )
 
+# ============================================================
+# COURIER SHIPMENTS (ISOLATED ACTIVE / COMPLETED TASKS)
+# ============================================================
+
+@router.get("/courier-tasks")
+async def get_courier_tasks(
+    wallet: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns parcels assigned to the authenticated courier (by user ID or connected wallet).
+    """
+    try:
+        courier_wallet = (wallet or "").strip().lower()
+
+        stmt = select(Parcel).where(
+            (func.trim(func.lower(Parcel.courier_address)) == courier_wallet)
+            | (Parcel.courier_email == current_user.get("email"))
+        ).order_by(Parcel.created_at.desc())
+
+        result = await db.execute(stmt)
+        parcels = result.scalars().all()
+
+        return [
+            {
+                "id": p.id,
+                "tracking_number": p.tracking_number,
+                "contents_name": p.contents_name,
+                "receiver_phone": p.receiver_phone,
+                "destination_address": p.destination_address,
+                "courier_address": p.courier_address,
+                "courier_name": p.courier_name,
+                "status": p.status,
+                "proximity_checkpoint": p.proximity_checkpoint,
+                "tx_hash": p.tx_hash,
+                "ipfs_hash": p.ipfs_hash,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+            }
+            for p in parcels
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================================
 # ACCEPT PARCEL

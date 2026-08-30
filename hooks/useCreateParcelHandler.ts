@@ -83,6 +83,7 @@ export function useCreateParcelHandler() {
       const otpData = await otpRes.json();
       const confirmationHash = (otpData.confirmation_hash || otpData.confirmationHash) as `0x${string}`;
       const trackingNumber = otpData.tracking_number || `POD-${Date.now()}`;
+      const secretPin = otpData.rawPin;
 
       // 3. Call createParcel with all 5 required arguments
       const bountyWei = parseEther(formData.courierFeeEth || "0.01");
@@ -122,6 +123,7 @@ export function useCreateParcelHandler() {
           sender_wallet: address,
           tx_hash: txHash,
           amount_eth: formData.courierFeeEth,
+          pin: secretPin,
           ipfs_hash: ipfsCid,
         }),
       });

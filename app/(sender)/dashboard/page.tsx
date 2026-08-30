@@ -76,9 +76,8 @@ export default function SenderDashboard() {
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
       }
-
-      // Try fetching both SME-specific parcels and all parcels without trailing slash
-      const res = await fetch(`${baseUrl}/api/v1/parcels`, { headers });
+        // Fetching only parcels created by logged in sender 
+      const res = await fetch(`${baseUrl}/api/v1/parcels/user-shipments`, { headers });
 
       if (res.ok) {
         const data: BackendParcelItem[] = await res.json();

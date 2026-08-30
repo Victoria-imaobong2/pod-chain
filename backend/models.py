@@ -6,7 +6,7 @@ from sqlalchemy import (
     Float,
     Integer,
     String,
-    Enum,
+    Enum as SQLEnum,
     DateTime,
 )
 
@@ -162,6 +162,7 @@ class UserModel(Base):
     )
 
     role = Column(
-        Enum(UserRole),
+        SQLEnum(UserRole, name="userrole", create_type=False),
+       default=UserRole.SME,
         nullable=False,
     )
