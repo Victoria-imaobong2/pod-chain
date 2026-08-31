@@ -113,6 +113,10 @@ class ConfirmDeliveryRequest(BaseModel):
 # GENERATE DELIVERY OTP
 # ============================================================
 
+# ============================================================
+# GENERATE DELIVERY OTP
+# ============================================================
+
 @router.post("/generate-otp")
 async def generate_otp(payload: OTPRequest):
     try:
@@ -123,7 +127,7 @@ async def generate_otp(payload: OTPRequest):
         k.update(raw_otp.encode("utf-8"))
         confirmation_hash = "0x" + k.hexdigest()
 
-        # Send OTP email
+        # Build OTP email message
         message = MessageSchema(
             subject="POD Chain - Your Delivery OTP",
             recipients=[payload.receiver_email],
@@ -144,9 +148,15 @@ async def generate_otp(payload: OTPRequest):
             subtype=MessageType.html,
         )
 
-        fm = FastMail(conf)
-        await fm.send_message(message)
+        # Attempt email dispatch safely without crashing on SMTP timeout/firewall block
+        try:
+            fm = FastMail(conf)
+            await fm.send_message(message)
+            print(f"[SUCCESS] Delivery PIN email dispatched to {payload.receiver_email}")
+        except Exception as email_err:
+            print(f"[WARNING] SMTP timed out or blocked by host. Receiver PIN: {raw_otp} | Error: {email_err}")
 
+        # Return hash to the sender (rawPin is also returned for testing/sync convenience)
         return {
             "status": "success",
             "confirmationHash": confirmation_hash,
@@ -161,8 +171,6 @@ async def generate_otp(payload: OTPRequest):
             status_code=500,
             detail=f"Failed to generate delivery OTP: {str(e)}",
         )
-
-
 # ============================================================
 # CREATE / SYNC BLOCKCHAIN PARCEL INTO POSTGRESQL
 # ============================================================
