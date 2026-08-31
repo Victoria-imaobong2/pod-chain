@@ -21,7 +21,7 @@ export default function SignUpPage() {
     setError("");
 
     try {
-      const response = await fetch(`${API_BASE_URL || "http://127.0.0.1:8000"}/api/auth/register`, {
+      const response = await fetch(`${API_BASE_URL || "https://podchain-backend.onrender.com"}/api/auth/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -5,7 +5,8 @@ import { parseEther } from "viem";
 import { useWriteContract, usePublicClient, useAccount } from "wagmi";
 import { API_BASE_URL } from "@/lib/config";
 
-const CONTRACT_ADDRESS = "0x5fbdb2315678afecb367f032d93f642f64180aa3" as const;
+const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
+  "0x5fbdb2315678afecb367f032d93f642f64180aa3") as `0x${string}`;
 
 export const ESCROW_CREATE_ABI = [
   {
@@ -45,7 +46,7 @@ export function useCreateParcelHandler() {
     setIsPending(true);
 
     try {
-      const baseUrl = API_BASE_URL || "http://127.0.0.1:8000";
+      const baseUrl = API_BASE_URL || "https://podchain-backend.onrender.com";
 
       // 1. Upload proof photo to IPFS (if file selected)
       let ipfsCid = formData.ipfsHash || "QmDefaultPlaceholderHash";
@@ -66,10 +67,12 @@ export function useCreateParcelHandler() {
         }
       }
 
-      // 2. Request OTP & confirmation hash from backend
+      // 2. Request confirmation hash from backend (Sender only receives the hash)
       const otpRes = await fetch(`${baseUrl}/api/v1/parcels/generate-otp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           receiver_email: formData.receiverEmail,
           receiver_phone: formData.receiverPhone,
@@ -77,15 +80,28 @@ export function useCreateParcelHandler() {
       });
 
       if (!otpRes.ok) {
-        throw new Error("Failed to generate delivery OTP hash from backend.");
+        const errDetail = await otpRes.json().catch(() => ({}));
+        console.error("Backend Generate-OTP Error:", errDetail);
+        throw new Error(
+          errDetail.detail ||
+            `Backend returned ${otpRes.status}: ${otpRes.statusText}`
+        );
       }
 
       const otpData = await otpRes.json();
-      const confirmationHash = (otpData.confirmation_hash || otpData.confirmationHash) as `0x${string}`;
-      const trackingNumber = otpData.tracking_number || `POD-${Date.now()}`;
-      const secretPin = otpData.rawPin;
+      const rawHash = otpData.confirmationHash || otpData.confirmation_hash;
 
-      // 3. Call createParcel with all 5 required arguments
+      if (!rawHash) {
+        throw new Error("Invalid response: confirmationHash missing from backend.");
+      }
+
+      const confirmationHash = (
+        rawHash.startsWith("0x") ? rawHash : `0x${rawHash}`
+      ) as `0x${string}`;
+
+      const trackingNumber = otpData.tracking_number || `POD-${Date.now()}`;
+
+      // 3. Call createParcel with bytes32 hash (no raw pin)
       const bountyWei = parseEther(formData.courierFeeEth || "0.01");
       const txHash = await writeContractAsync({
         address: CONTRACT_ADDRESS,
@@ -106,8 +122,10 @@ export function useCreateParcelHandler() {
         await publicClient.waitForTransactionReceipt({ hash: txHash });
       }
 
-      // 4. Sync metadata to backend
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      // 4. Sync metadata to backend (strictly without raw PIN)
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
       await fetch(`${baseUrl}/api/v1/parcels/sync`, {
         method: "POST",
         headers: {
@@ -123,10 +141,10 @@ export function useCreateParcelHandler() {
           sender_wallet: address,
           tx_hash: txHash,
           amount_eth: formData.courierFeeEth,
-          pin: secretPin,
           ipfs_hash: ipfsCid,
+          confirmation_hash: confirmationHash,
         }),
-      });
+      }).catch((syncErr) => console.warn("Sync warning:", syncErr));
 
       return {
         success: true,

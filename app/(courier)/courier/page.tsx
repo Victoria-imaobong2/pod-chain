@@ -67,7 +67,7 @@ export default function CourierDashboard() {
 
   const fetchAllParcels = useCallback(async () => {
     try {
-      const baseUrl = API_BASE_URL || "http://127.0.0.1:8000";
+      const baseUrl = API_BASE_URL || "https://podchain-backend.onrender.com";
 
       const [resAvailable, resAll] = await Promise.allSettled([
         fetch(`${baseUrl}/api/v1/parcels/available`),
