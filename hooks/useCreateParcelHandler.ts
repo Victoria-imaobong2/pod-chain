@@ -5,7 +5,8 @@ import { parseEther } from "viem";
 import { useWriteContract, usePublicClient, useAccount } from "wagmi";
 import { API_BASE_URL } from "@/lib/config";
 
-const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
+const CONTRACT_ADDRESS = (
+  process.env.NEXT_PUBLIC_ESCROW_CONTRACT_ADDRESS || process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
   "0x5fbdb2315678afecb367f032d93f642f64180aa3") as `0x${string}`;
 
 export const ESCROW_CREATE_ABI = [
@@ -102,7 +103,7 @@ export function useCreateParcelHandler() {
       const trackingNumber = otpData.tracking_number || `POD-${Date.now()}`;
 
       // 3. Call createParcel with bytes32 hash (no raw pin)
-      const bountyWei = parseEther(formData.courierFeeEth || "0.01");
+      const bountyWei = parseEther(formData.courierFeeEth || "0.0001");
       const txHash = await writeContractAsync({
         address: CONTRACT_ADDRESS,
         abi: ESCROW_CREATE_ABI,
