@@ -49,7 +49,7 @@ const config = createConfig({
   connectors,
   chains: [baseSepolia, base, hardhat],
   transports: {
-    [baseSepolia.id]: http(),
+    [baseSepolia.id]: http("https://base-sepolia-rpc.publicnode.com"),
     [base.id]: http(),
     [hardhat.id]: http("http://127.0.0.1:8545"),
   },
