@@ -10,4 +10,4 @@ export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   process.env.NEXT_PUBLIC_API_BASE_URL ||
   "https://podchain-backend.onrender.com";
-  export const CONTRACT_ADDRESS = "0x5fbdb2315678afecb367f032d93f642f64180aa3" as `0x${string}`;
+  export const CONTRACT_ADDRESS = "0x5ec609ee5e21c8e00050228a1c51077589be5e39" as `0x${string}`;

@@ -7,7 +7,7 @@ import { API_BASE_URL } from "@/lib/config";
 
 const CONTRACT_ADDRESS = (
   process.env.NEXT_PUBLIC_ESCROW_CONTRACT_ADDRESS || process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
-  "0x5fbdb2315678afecb367f032d93f642f64180aa3") as `0x${string}`;
+  "0x5ec609ee5e21c8e00050228a1c51077589be5e39") as `0x${string}`;
 
 export const ESCROW_CREATE_ABI = [
   {
@@ -116,7 +116,6 @@ export function useCreateParcelHandler() {
           ipfsCid,
         ],
         value: bountyWei,
-        gas: BigInt(500000),
       });
 
       if (publicClient) {

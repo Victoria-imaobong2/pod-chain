@@ -52,7 +52,7 @@ export default function CreateParcelPage() {
   const [formData, setFormData] = useState({
     receiverEmail: "",
     receiverPhone: "",
-    courierFeeEth: "0.01",
+    courierFeeEth: "0.001",
     ipfsHash: "",
     contentsName: "",
     destinationAddress: "",
@@ -324,7 +324,7 @@ export default function CreateParcelPage() {
                 courierFeeEth: e.target.value,
               })
             }
-            placeholder="0.01"
+            placeholder="0.0001"
             className="w-full p-3 border border-slate-300 rounded-xl outline-none text-slate-900 bg-slate-50 focus:bg-white focus:border-teal-500 transition-all text-sm"
           />
         </div>

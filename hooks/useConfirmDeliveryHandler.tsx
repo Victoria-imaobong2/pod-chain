@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useWriteContract, useAccount, usePublicClient } from "wagmi";
 
-const CONTRACT_ADDRESS = "0x5fbdb2315678afecb367f032d93f642f64180aa3" as const;
+const CONTRACT_ADDRESS = "0x5ec609ee5e21c8e00050228a1c51077589be5e39" as const;
 
 export const DELIVERY_ESCROW_ABI = [
   {
