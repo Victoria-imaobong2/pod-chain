@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useWriteContract, usePublicClient } from "wagmi";
+import { useAccount, useWriteContract, usePublicClient } from "wagmi";
 import { parseEther } from "viem";
 
 export const ESCROW_CREATE_ABI = [
@@ -23,8 +23,9 @@ const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_ESCROW_CONTRACT_ADDRESS ||
   "0x5ec609ee5e21c8e00050228a1c51077589be5e39") as `0x${string}`;
 
 export function useCreateParcelHandler() {
-  const publicClient = usePublicClient();
+  const { isConnected } = useAccount();
   const { writeContractAsync } = useWriteContract();
+  const publicClient = usePublicClient();
   const [loading, setLoading] = useState(false);
 
   const handleCreateParcel = async (
@@ -42,7 +43,11 @@ export function useCreateParcelHandler() {
       process.env.NEXT_PUBLIC_API_BASE_URL || "https://podchain-backend.onrender.com";
 
     try {
-      // 1. Upload File to IPFS (if provided)
+      if (!isConnected) {
+        throw new Error("Wallet is not connected. Please click Connect Wallet first.");
+      }
+
+      // 1. IPFS Upload
       let ipfsCid = "QmDefaultPlaceholderHash";
       if (file) {
         try {
@@ -59,11 +64,11 @@ export function useCreateParcelHandler() {
             ipfsCid = ipfsJson.cid || ipfsJson.IpfsHash || ipfsJson.hash || ipfsCid;
           }
         } catch (ipfsErr) {
-          console.warn("IPFS upload fallback to placeholder:", ipfsErr);
+          console.warn("IPFS upload fallback:", ipfsErr);
         }
       }
 
-      // 2. Generate OTP - Send BOTH receiver_email and receiver_phone for Pydantic validation
+      // 2. Generate OTP & confirmation hash
       const otpRes = await fetch(`${baseUrl}/api/v1/parcels/generate-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -75,41 +80,71 @@ export function useCreateParcelHandler() {
 
       if (!otpRes.ok) {
         const errText = await otpRes.text();
-        console.error("Backend OTP Error Details:", otpRes.status, errText);
-        throw new Error(`OTP Generation Failed (${otpRes.status}): ${errText}`);
+        throw new Error(`OTP Generation Failed: ${errText}`);
       }
 
       const { confirmationHash, rawPin } = await otpRes.json();
 
-      // 3. Format Hash for Viem / Solidity bytes32
-      const formattedHash = (
-        confirmationHash.startsWith("0x")
-          ? confirmationHash
-          : `0x${confirmationHash}`
-      ) as `0x${string}`;
-
-      const bountyWei = parseEther(formData.courierFeeEth || "0.001");
-
-      // 4. Contract call
-      const txHash = await writeContractAsync({
-        address: CONTRACT_ADDRESS,
-        abi: ESCROW_CREATE_ABI,
-        functionName: "createParcel",
-        args: [
-          formData.receiverPhone,
-          formData.destinationAddress,
-          formData.contentsName,
-          formattedHash,
-          ipfsCid,
-        ],
-        value: bountyWei,
-      });
-
-      if (publicClient) {
-        await publicClient.waitForTransactionReceipt({ hash: txHash });
+      // Ensure 32-byte hex hash format with exact 66 characters
+      let formattedHash = confirmationHash || "";
+      if (!formattedHash.startsWith("0x")) {
+        formattedHash = `0x${formattedHash}`;
+      }
+      if (formattedHash.length < 66) {
+        formattedHash = formattedHash.padEnd(66, "0");
+      } else if (formattedHash.length > 66) {
+        formattedHash = formattedHash.slice(0, 66);
       }
 
-      // 5. Sync metadata to PostgreSQL backend
+      let txHash: `0x${string}`;
+
+      // 3. Contract Write with direct backend relay fallback
+      try {
+        const bountyWei = parseEther(formData.courierFeeEth || "0.001");
+        txHash = await writeContractAsync({
+          address: CONTRACT_ADDRESS,
+          abi: ESCROW_CREATE_ABI,
+          functionName: "createParcel",
+          args: [
+            formData.receiverPhone,
+            formData.destinationAddress,
+            formData.contentsName,
+            formattedHash as `0x${string}`,
+            ipfsCid,
+          ],
+          value: bountyWei,
+          gas: BigInt(500000),
+        });
+
+        if (publicClient) {
+          await publicClient.waitForTransactionReceipt({ hash: txHash });
+        }
+      } catch (clientErr) {
+        console.warn("MetaMask client broadcast issue, using relay route...", clientErr);
+
+        const relayRes = await fetch("/api/relay-tx", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            receiverPhone: formData.receiverPhone,
+            destinationAddress: formData.destinationAddress,
+            contentsName: formData.contentsName,
+            confirmationHash: formattedHash,
+            ipfsHash: ipfsCid,
+            feeEth: formData.courierFeeEth,
+          }),
+        });
+
+        if (!relayRes.ok) {
+          const relayErr = await relayRes.json();
+          throw new Error(relayErr.error || "Failed on-chain transaction");
+        }
+
+        const relayData = await relayRes.json();
+        txHash = relayData.txHash;
+      }
+
+      // 4. Sync to PostgreSQL backend
       const token =
         typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
@@ -128,6 +163,8 @@ export function useCreateParcelHandler() {
           receiver_phone: formData.receiverPhone,
           destination_address: formData.destinationAddress,
           pin: rawPin,
+          delivery_code: rawPin,
+          pin_code: rawPin,
           ipfs_hash: ipfsCid,
           tx_hash: txHash,
         }),

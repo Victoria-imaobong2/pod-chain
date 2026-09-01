@@ -47,15 +47,14 @@ const connectors = connectorsForWallets(
 // 2. Pass connectors directly into createConfig
 const config = createConfig({
   connectors,
-  chains: [baseSepolia, base, hardhat],
+  chains: [baseSepolia],
   transports: {
     [baseSepolia.id]: fallback([
     http("https://sepolia.base.org"),
     http("https://base-sepolia-rpc.publicnode.com"),
     http("https://1rpc.io/base-sepolia"),
   ]),
-    [base.id]: http(),
-    [hardhat.id]: http("http://127.0.0.1:8545"),
+
   },
   ssr: false,
 });

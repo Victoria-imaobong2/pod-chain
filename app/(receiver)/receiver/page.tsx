@@ -42,9 +42,9 @@ const getNotificationItemStyle = (type: "creation" | "proximity" | "delivered") 
 
 const DEFAULT_PROFILE: ReceiverProfile = {
   name: "Victoria-Imaobong Solomon",
-  phone: "08123456789",
-  email: "receiver@podchain.com",
-  address: "No 04 Set Address Road, LGA, State, Nigeria.",
+  phone: "07039102053",
+  email: "solomonvictoria2023@gmail.com",
+  address: "Federal University of Technology Owerri",
 };
 
 const subscribe = () => () => {};
@@ -113,15 +113,21 @@ export default function ReceiverDashboard() {
 
   const fetchReceiverShipments = useCallback(async () => {
     try {
-      const baseUrl = API_BASE_URL || "http://127.0.0.1:8000";
+      const baseUrl = API_BASE_URL || "https://podchain-backend.onrender.com";
       const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const targetEmail = profile.email || "solomonvictoria2023@gmail.com";
 
-      const res = await fetch(`${baseUrl}/api/v1/parcels/receiver-shipments`, {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      // Fetch from general parcels ledger to avoid unauthenticated 401 routes
+      const res = await fetch(`${baseUrl}/api/v1/parcels/`, {
         method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers,
       });
 
       if (!res.ok) {
@@ -131,16 +137,26 @@ export default function ReceiverDashboard() {
 
       const data = await res.json();
       if (Array.isArray(data)) {
-        const mapped: Shipment[] = data.map((item) => ({
+        // Match shipments belonging to this receiver
+        const matched = data.filter(
+          (p) =>
+            p.receiver_email?.toLowerCase() === targetEmail.toLowerCase() ||
+            p.receiver_phone === profile.phone ||
+            p.destination_address?.toLowerCase().includes(profile.address?.toLowerCase() || "")
+        );
+
+        const mapped: Shipment[] = matched.map((item) => ({
           id: item.tracking_number || `POD-${item.id}`,
           sender: "Verified Merchant",
           item: item.contents_name || "General Cargo",
           status: item.status || "Created",
-          timestamp: item.created_at ? item.created_at.substring(0, 16).replace("T", " ") : "Recent",
+          timestamp: item.created_at
+            ? item.created_at.substring(0, 16).replace("T", " ")
+            : "Recent",
           hash: item.tx_hash
             ? item.tx_hash.substring(0, 6) + "..." + item.tx_hash.substring(item.tx_hash.length - 4)
             : "0x...",
-          pin: item.pin || "000000",
+          pin: item.pin || item.delivery_code || item.pin_code || item.otp || "000000",
           address: item.destination_address || profile.address,
           courierName: item.courier_name || "Assigning Courier...",
           courierPhone: item.courier_phone || "N/A",
@@ -152,7 +168,7 @@ export default function ReceiverDashboard() {
     } catch (err) {
       console.error("Failed to load receiver shipments:", err);
     }
-  }, [profile.address]);
+  }, [profile.email, profile.phone, profile.address]);
 
   useEffect(() => {
     const run = async () => {

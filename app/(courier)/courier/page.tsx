@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import { useAccount, useDisconnect, useBalance } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { createPublicClient, http } from "viem";
+import { baseSepolia } from "viem/chains";
 
 import StatusBadge from "@/components/shared/StatusBadge";
 import BottomNavCourier from "@/components/navigation/BottomNavCourier";
@@ -25,6 +27,32 @@ import FreeRouteMap from "@/components/shared/FreeRouteMap";
 import { useConfirmDeliveryHandler } from "../../../hooks/useConfirmDeliveryHandler";
 import { API_BASE_URL } from "@/lib/config";
 
+const publicClient = createPublicClient({
+  chain: baseSepolia,
+  transport: http("https://sepolia.base.org"),
+});
+
+export const ESCROW_ABI = [
+  {
+    type: "function",
+    name: "parcelCount",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "confirmDelivery",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "_parcelId", type: "uint256" },
+      { name: "_pin", type: "string" },
+    ],
+    outputs: [],
+  },
+] as const;
+
+const CONTRACT_ADDRESS = "0x5ec609ee5e21c8e00050228a1c51077589be5e39" as `0x${string}`;
 export interface CourierParcel {
   id: number | string;
   tracking_number?: string;

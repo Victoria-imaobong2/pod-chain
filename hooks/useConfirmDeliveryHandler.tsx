@@ -1,11 +1,19 @@
-"use client";
-
 import { useState } from "react";
-import { useWriteContract, useAccount, usePublicClient } from "wagmi";
+import { useAccount, useWriteContract, usePublicClient } from "wagmi";
+import { createPublicClient, http } from "viem";
+import { baseSepolia } from "viem/chains";
 
-const CONTRACT_ADDRESS = "0x5ec609ee5e21c8e00050228a1c51077589be5e39" as const;
-
-export const DELIVERY_ESCROW_ABI = [
+export const ESCROW_DELIVERY_ABI = [
+  {
+    type: "function",
+    name: "confirmDelivery",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "_parcelId", type: "uint256" },
+      { name: "_pin", type: "string" },
+    ],
+    outputs: [],
+  },
   {
     type: "function",
     name: "parcelCount",
@@ -13,79 +21,56 @@ export const DELIVERY_ESCROW_ABI = [
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
   },
-  {
-    type: "function",
-    name: "confirmDeliveryWithCode",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "_id", type: "uint256" },
-      { name: "_secretCode", type: "string" },
-    ],
-    outputs: [],
-  },
 ] as const;
 
+const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_ESCROW_CONTRACT_ADDRESS ||
+  process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
+  "0x5ec609ee5e21c8e00050228a1c51077589be5e39") as `0x${string}`;
+
+const directPublicClient = createPublicClient({
+  chain: baseSepolia,
+  transport: http("https://sepolia.base.org"),
+});
+
 export function useConfirmDeliveryHandler() {
+  const { isConnected } = useAccount();
   const { writeContractAsync } = useWriteContract();
-  const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
   const [isPending, setIsPending] = useState(false);
 
-  const handleConfirmDelivery = async (parcelIdInput: number | string, rawPin: string) => {
-    if (!isConnected || !address) {
-      throw new Error("Please connect your Web3 wallet first.");
-    }
-
+  const handleConfirmDelivery = async (parcelId: number | string, pin: string) => {
     setIsPending(true);
-
     try {
-      let targetId = BigInt(Number(parcelIdInput) || 1);
-
-      if (publicClient) {
-        const totalCount = await publicClient.readContract({
-          address: CONTRACT_ADDRESS,
-          abi: DELIVERY_ESCROW_ABI,
-          functionName: "parcelCount",
-        });
-
-        if (totalCount === BigInt(0)) {
-          throw new Error("No parcels found on-chain. Please create a parcel first.");
-        }
-
-        if (targetId <= BigInt(0) || targetId > totalCount) {
-          targetId = totalCount;
-        }
+      if (!isConnected) {
+        throw new Error("Wallet not connected. Connect your courier wallet.");
       }
 
-      console.log(`Submitting single-step confirmDeliveryWithCode for ID #${targetId} with PIN:`, rawPin);
+      const idBigInt = BigInt(parcelId);
 
-      // Execute ONLY ONE transaction in MetaMask
       const txHash = await writeContractAsync({
         address: CONTRACT_ADDRESS,
-        abi: DELIVERY_ESCROW_ABI,
-        functionName: "confirmDeliveryWithCode",
-        args: [targetId, rawPin],
+        abi: ESCROW_DELIVERY_ABI,
+        functionName: "confirmDelivery",
+        args: [idBigInt, pin],
+        chainId: 84532,
         gas: BigInt(300000),
       });
 
-      if (publicClient) {
-        await publicClient.waitForTransactionReceipt({ hash: txHash });
-      }
+      const client = publicClient || directPublicClient;
+      await client.waitForTransactionReceipt({ hash: txHash });
 
-      return { success: true, txHash };
+      return {
+        success: true,
+        txHash,
+      };
     } catch (err: unknown) {
-      console.error("Settlement error:", err);
-      const error = err as { shortMessage?: string; message?: string };
-      throw new Error(error.shortMessage || error.message || "Confirmation failed");
+      console.error("Confirm delivery contract error:", err);
+      const message = err instanceof Error ? err.message : "Failed to confirm delivery";
+      throw new Error(message);
     } finally {
       setIsPending(false);
     }
   };
 
-  return {
-    handleConfirmDelivery,
-    isPending,
-    isConnected,
-    address,
-  };
+  return { handleConfirmDelivery, isPending };
 }

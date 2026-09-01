@@ -5,7 +5,7 @@ import traceback
 import hashlib
 import secrets
 import math
-import resend
+import httpx
 
 from datetime import datetime, time
 from typing import Optional
@@ -21,12 +21,6 @@ from fastapi import (
 )
 
 from pydantic import BaseModel, EmailStr
-from fastapi_mail import (
-    FastMail,
-    MessageSchema,
-    ConnectionConfig,
-    MessageType,
-)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
@@ -35,13 +29,10 @@ from database import get_db
 from models import Parcel
 from auth_utils import get_current_user
 
-
 router = APIRouter(
     prefix="/api/v1/parcels",
     tags=["Parcels & Notifications"],
 )
-
-resend.api_key = os.getenv("RESEND_API_KEY")
 
 # ============================================================
 # SCHEMAS
@@ -54,6 +45,7 @@ class CreateParcelRecordRequest(BaseModel):
     receiver_phone: str
     destination_address: str
     pin: Optional[str] = None
+    delivery_code: Optional[str] = None
     ipfs_hash: Optional[str] = ""
     tx_hash: Optional[str] = ""
     sender_wallet: Optional[str] = ""
@@ -84,32 +76,60 @@ class OTPRequest(BaseModel):
     receiver_email: EmailStr
     receiver_phone: str
 
-class OTPResponse(BaseModel):
-    status: str
-    confirmationHash: str
-    # rawPin is omitted or returned strictly for testing/dev environments
-
-# ============================================================
-# EMAIL CONFIGURATION
-# ============================================================
-
-conf = ConnectionConfig(
-    MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
-    MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
-    MAIL_FROM=os.getenv("MAIL_FROM"),
-    MAIL_PORT=465,
-    MAIL_SERVER="smtp.gmail.com",
-    MAIL_STARTTLS=False,
-    MAIL_SSL_TLS=True,
-    USE_CREDENTIALS=True,
-    MAIL_FROM_NAME="POD Chain Logistics",
-    TIMEOUT=15,
-)
 
 class ConfirmDeliveryRequest(BaseModel):
     tx_hash: Optional[str] = None
     delivery_code: Optional[str] = None
 
+
+class GPSLocationUpdate(BaseModel):
+    latitude: float
+    longitude: float
+
+
+# ============================================================
+# BREVO EMAIL DISPATCH (ANY RECIPIENT EMAIL)
+# ============================================================
+
+async def send_delivery_email(receiver_email: str, pin: str):
+    api_key = os.getenv("BREVO_API_KEY")
+    sender_email = os.getenv("MAIL_FROM") or os.getenv("SENDER_EMAIL") or "solomonvictoria2023@gmail.com"
+
+    if not api_key:
+        print("[WARNING] BREVO_API_KEY missing in environment. Email skipped.")
+        return
+
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "accept": "application/json",
+        "api-key": api_key,
+        "content-type": "application/json",
+    }
+    payload = {
+        "sender": {"name": "POD Chain Logistics", "email": sender_email},
+        "to": [{"email": receiver_email}],
+        "subject": f"POD Chain - Your Delivery Verification PIN: {pin}",
+        "htmlContent": f"""
+        <div style="font-family: Arial, sans-serif; padding: 24px; color: #1e293b; max-width: 500px; border: 1px solid #e2e8f0; border-radius: 12px;">
+            <h2 style="color: #0d9488; margin-top: 0;">POD Chain Delivery Verification</h2>
+            <p>A package has been dispatched to your destination.</p>
+            <p>Your one-time delivery confirmation PIN is:</p>
+            <div style="font-size: 32px; font-weight: bold; letter-spacing: 6px; padding: 14px; background: #f1f5f9; text-align: center; border-radius: 8px; color: #0f172a; margin: 16px 0;">
+                {pin}
+            </div>
+            <p style="font-size: 13px; color: #64748b; line-height: 1.5;">
+                Give this 6-digit code to the courier upon physical arrival to release smart contract escrow funds.
+            </p>
+        </div>
+        """,
+    }
+
+    async with httpx.AsyncClient() as client:
+        res = await client.post(url, headers=headers, json=payload, timeout=10.0)
+        if res.status_code in (200, 201):
+            print(f"[SUCCESS] OTP email dispatched via Brevo to {receiver_email}")
+        else:
+            print(f"[BREVO ERROR] {res.status_code}: {res.text}")
 
 
 # ============================================================
@@ -126,31 +146,12 @@ async def generate_otp(payload: OTPRequest):
         k.update(raw_otp.encode("utf-8"))
         confirmation_hash = "0x" + k.hexdigest()
 
-        # Resend HTTP Email Dispatch (Works across Render port blocks)
+        # Send via Brevo HTTP API
         try:
-            email_params = {
-                "from": "POD Chain <onboarding@resend.dev>",
-                "to": [payload.receiver_email],
-                "subject": "POD Chain - Your Delivery OTP",
-                "html": f"""
-                <div style="font-family: Arial, sans-serif; padding: 20px; line-height: 1.5;">
-                    <h2>Your POD Chain Delivery OTP</h2>
-                    <p>Hello,</p>
-                    <p>Your delivery verification OTP is:</p>
-                    <h1 style="letter-spacing: 8px; font-size: 32px; color: #2563eb;">{raw_otp}</h1>
-                    <p>Give this OTP to the courier when your package is delivered.</p>
-                    <p>Do not share this code with anyone other than the courier handling your delivery.</p>
-                    <hr>
-                    <p style="color: #64748b; font-size: 12px;">POD Chain - Decentralized Proof of Delivery</p>
-                </div>
-                """,
-            }
-            resend.Emails.send(email_params)
-            print(f"[SUCCESS] Delivery PIN email dispatched via Resend to {payload.receiver_email}")
+            await send_delivery_email(payload.receiver_email, raw_otp)
         except Exception as email_err:
-            print(f"[WARNING] Resend dispatch error. Receiver PIN: {raw_otp} | Error: {email_err}")
+            print(f"[WARNING] Email dispatch error: {email_err}")
 
-        # Return hash and rawPin
         return {
             "status": "success",
             "confirmationHash": confirmation_hash,
@@ -165,6 +166,8 @@ async def generate_otp(payload: OTPRequest):
             status_code=500,
             detail=f"Failed to generate delivery OTP: {str(e)}",
         )
+
+
 # ============================================================
 # CREATE / SYNC BLOCKCHAIN PARCEL INTO POSTGRESQL
 # ============================================================
@@ -175,9 +178,6 @@ async def sync_parcel(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Saves a successfully created blockchain parcel into PostgreSQL.
-    """
     try:
         # Prevent duplicate transaction records
         if data.tx_hash:
@@ -214,7 +214,8 @@ async def sync_parcel(
                 },
             }
 
-        # Create PostgreSQL record
+        pin_value = data.pin or data.delivery_code
+
         new_parcel = Parcel(
             tracking_number=data.tracking_number,
             sender_id=current_user["id"],
@@ -222,7 +223,7 @@ async def sync_parcel(
             receiver_email=data.receiver_email or "Not Provided",
             receiver_phone=data.receiver_phone,
             destination_address=data.destination_address,
-            pin=data.pin,
+            pin=pin_value,
             ipfs_hash=data.ipfs_hash or None,
             tx_hash=data.tx_hash or None,
             status="Created",
@@ -256,97 +257,27 @@ async def sync_parcel(
             status_code=500,
             detail=f"Failed to synchronize parcel: {str(e)}",
         )
+
+
 # ============================================================
-# SENDER SHIPMENTS (STRICT USER ISOLATION)
+# RECEIVER SHIPMENTS (PUBLIC / EMAIL-BASED & AUTHENTICATED)
 # ============================================================
 
-@router.get("/user-shipments")
-async def get_user_shipments(
-    start_date: Optional[str] = Query(None),
-    end_date: Optional[str] = Query(None),
-    limit: Optional[int] = Query(None, ge=1, le=100),
-    current_user: dict = Depends(get_current_user),
+@router.get("/receiver/{email}")
+async def get_receiver_shipments_by_email(
+    email: str,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Returns only parcels created by the currently authenticated sender.
+    Returns parcels explicitly addressed to the receiver's email with PIN verification.
     """
     try:
+        clean_email = email.strip().lower()
         stmt = (
             select(Parcel)
-            .where(Parcel.sender_id == current_user["id"])
+            .where(func.trim(func.lower(Parcel.receiver_email)) == clean_email)
             .order_by(Parcel.created_at.desc())
         )
-
-        if start_date:
-            parsed_start = datetime.strptime(start_date, "%Y-%m-%d")
-            stmt = stmt.where(Parcel.created_at >= parsed_start)
-
-        if end_date:
-            parsed_end = datetime.combine(
-                datetime.strptime(end_date, "%Y-%m-%d").date(),
-                time.max,
-            )
-            stmt = stmt.where(Parcel.created_at <= parsed_end)
-
-        if limit:
-            stmt = stmt.limit(limit)
-
-        result = await db.execute(stmt)
-        parcels = result.scalars().all()
-
-        return [
-            {
-                "id": p.id,
-                "tracking_number": p.tracking_number,
-                "contents_name": p.contents_name,
-                "receiver_email": p.receiver_email,
-                "receiver_phone": p.receiver_phone,
-                "destination_address": p.destination_address,
-                "courier_name": p.courier_name or "Assigning Courier...",
-                "courier_phone": p.courier_phone or "N/A",
-                "courier_email": p.courier_email or "N/A",
-                "courier_address": p.courier_address,
-                "proximity_checkpoint": p.proximity_checkpoint or "Created",
-                "status": p.status,
-                "ipfs_hash": p.ipfs_hash,
-                "tx_hash": p.tx_hash,
-                "created_at": p.created_at.isoformat() if p.created_at else None,
-            }
-            for p in parcels
-        ]
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Database query error: {str(e)}",
-        )
-
-    
-
-
-# ============================================================
-# RECEIVER SHIPMENTS (STRICT EMAIL ISOLATION)
-# ============================================================
-
-@router.get("/receiver-shipments")
-async def get_receiver_shipments(
-    current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Returns only parcels explicitly addressed to the logged-in receiver's email.
-    """
-    try:
-        user_email = current_user.get("email", "").strip().lower()
-        if not user_email:
-            return []
-
-        stmt = (
-            select(Parcel)
-            .where(func.trim(func.lower(Parcel.receiver_email)) == user_email)
-            .order_by(Parcel.created_at.desc())
-        )
-
         result = await db.execute(stmt)
         parcels = result.scalars().all()
 
@@ -370,13 +301,52 @@ async def get_receiver_shipments(
             for p in parcels
         ]
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch receiver parcels: {str(e)}",
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/receiver-shipments")
+async def get_receiver_shipments(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        user_email = current_user.get("email", "").strip().lower()
+        if not user_email:
+            return []
+
+        stmt = (
+            select(Parcel)
+            .where(func.trim(func.lower(Parcel.receiver_email)) == user_email)
+            .order_by(Parcel.created_at.desc())
         )
-    
+        result = await db.execute(stmt)
+        parcels = result.scalars().all()
+
+        return [
+            {
+                "id": p.id,
+                "tracking_number": p.tracking_number,
+                "contents_name": p.contents_name,
+                "receiver_email": p.receiver_email,
+                "receiver_phone": p.receiver_phone,
+                "destination_address": p.destination_address,
+                "courier_name": p.courier_name or "Assigning Courier...",
+                "courier_phone": p.courier_phone or "N/A",
+                "proximity_checkpoint": p.proximity_checkpoint or "Created",
+                "status": p.status,
+                "pin": p.pin,
+                "ipfs_hash": p.ipfs_hash,
+                "tx_hash": p.tx_hash,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+            }
+            for p in parcels
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============================================================
-# GET ALL SHIPMENTS (FOR SENDER DASHBOARD & LEDGER)
+# GET ALL SHIPMENTS
 # ============================================================
 
 @router.get("")
@@ -384,9 +354,6 @@ async def get_receiver_shipments(
 async def get_all_parcels(
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Returns all parcel delivery records ordered by latest creation date.
-    """
     try:
         stmt = select(Parcel).order_by(Parcel.created_at.desc())
         result = await db.execute(stmt)
@@ -406,6 +373,7 @@ async def get_all_parcels(
                 "courier_address": p.courier_address,
                 "proximity_checkpoint": p.proximity_checkpoint or "Created",
                 "status": p.status,
+                "pin": p.pin,
                 "ipfs_hash": p.ipfs_hash,
                 "tx_hash": p.tx_hash,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
@@ -413,20 +381,15 @@ async def get_all_parcels(
             for p in parcels
         ]
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch parcels: {str(e)}",
-        )
-    
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============================================================
-# GET AVAILABLE PARCELS (FOR COURIER DISPATCH TERMINAL)
+# GET AVAILABLE PARCELS
 # ============================================================
 
 @router.get("/available")
 async def get_available_parcels(db: AsyncSession = Depends(get_db)):
-    """
-    Returns all parcels waiting for a courier to accept them.
-    """
     try:
         stmt = (
             select(Parcel)
@@ -451,54 +414,8 @@ async def get_available_parcels(db: AsyncSession = Depends(get_db)):
             for p in parcels
         ]
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch available parcels: {str(e)}",
-        )
-
-# ============================================================
-# COURIER SHIPMENTS (ISOLATED ACTIVE / COMPLETED TASKS)
-# ============================================================
-
-@router.get("/courier-tasks")
-async def get_courier_tasks(
-    wallet: Optional[str] = Query(None),
-    current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Returns parcels assigned to the authenticated courier (by user ID or connected wallet).
-    """
-    try:
-        courier_wallet = (wallet or "").strip().lower()
-
-        stmt = select(Parcel).where(
-            (func.trim(func.lower(Parcel.courier_address)) == courier_wallet)
-            | (Parcel.courier_email == current_user.get("email"))
-        ).order_by(Parcel.created_at.desc())
-
-        result = await db.execute(stmt)
-        parcels = result.scalars().all()
-
-        return [
-            {
-                "id": p.id,
-                "tracking_number": p.tracking_number,
-                "contents_name": p.contents_name,
-                "receiver_phone": p.receiver_phone,
-                "destination_address": p.destination_address,
-                "courier_address": p.courier_address,
-                "courier_name": p.courier_name,
-                "status": p.status,
-                "proximity_checkpoint": p.proximity_checkpoint,
-                "tx_hash": p.tx_hash,
-                "ipfs_hash": p.ipfs_hash,
-                "created_at": p.created_at.isoformat() if p.created_at else None,
-            }
-            for p in parcels
-        ]
-    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 # ============================================================
 # ACCEPT PARCEL
@@ -515,10 +432,7 @@ async def accept_parcel_job(
     parcel = result.scalar_one_or_none()
 
     if not parcel:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Parcel with ID {parcel_id} not found",
-        )
+        raise HTTPException(status_code=404, detail=f"Parcel with ID {parcel_id} not found")
 
     parcel.status = "InTransit"
     parcel.courier_address = data.courier_wallet
@@ -537,17 +451,15 @@ async def accept_parcel_job(
         "courier_name": parcel.courier_name,
     }
 
+
 def calculate_distance(lat1, lon1, lat2, lon2):
-    R = 6371.0 # Earth radius in kilometers
+    R = 6371.0
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
     a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
 
-class GPSLocationUpdate(BaseModel):
-    latitude: float
-    longitude: float
 
 @router.patch("/{parcel_id}/gps-ping")
 async def update_courier_gps(
@@ -572,10 +484,9 @@ async def update_courier_gps(
         )
         parcel.distance_remaining_km = round(distance, 2)
 
-        # Automatic proximity checkpoint updates
-        if distance <= 0.2: # Under 200 meters
+        if distance <= 0.2:
             parcel.proximity_checkpoint = "Arrived at Destination"
-        elif distance <= 1.0: # Under 1 km
+        elif distance <= 1.0:
             parcel.proximity_checkpoint = "Approaching Destination (<1km)"
         else:
             parcel.proximity_checkpoint = f"In Transit ({parcel.distance_remaining_km} km away)"
@@ -587,9 +498,6 @@ async def update_courier_gps(
         "checkpoint": parcel.proximity_checkpoint
     }
 
-# ============================================================
-# UPDATE PROXIMITY
-# ============================================================
 
 @router.patch("/{parcel_id}/proximity")
 async def update_proximity(
@@ -602,10 +510,7 @@ async def update_proximity(
     parcel = result.scalar_one_or_none()
 
     if not parcel:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Parcel with ID {parcel_id} not found",
-        )
+        raise HTTPException(status_code=404, detail=f"Parcel with ID {parcel_id} not found")
 
     parcel.proximity_checkpoint = data.checkpoint
     await db.commit()
@@ -617,96 +522,18 @@ async def update_proximity(
     }
 
 
-# ============================================================
-# ASSIGNED COURIER
-# ============================================================
-
-@router.get("/{parcel_id}/assigned-courier")
-async def get_assigned_courier(
-    parcel_id: int,
-    db: AsyncSession = Depends(get_db),
-):
-    stmt = select(Parcel).where(Parcel.id == parcel_id)
-    result = await db.execute(stmt)
-    parcel = result.scalar_one_or_none()
-
-    if not parcel:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Parcel with ID {parcel_id} not found",
-        )
-
-    return {
-        "parcel_id": parcel.id,
-        "courier_name": parcel.courier_name or "Assigned Courier",
-        "courier_phone": parcel.courier_phone or "N/A",
-        "courier_email": parcel.courier_email or "N/A",
-        "courier_wallet": parcel.courier_address or "Not Assigned",
-        "proximity_checkpoint": parcel.proximity_checkpoint or "Dispatched",
-    }
-
-
-# ============================================================
-# NOTIFY RECEIVER / GENERATE QR
-# ============================================================
-
-@router.post("/notify")
-async def process_delivery_secret(
-    payload: NotifyRequest,
-):
-    try:
-        qr_data = f"POD_PARCEL:{payload.txHash}|PIN:{payload.pin}"
-
-        qr = qrcode.QRCode(
-            version=1,
-            error_correction=qrcode.constants.ERROR_CORRECT_L,
-            box_size=10,
-            border=4,
-        )
-        qr.add_data(qr_data)
-        qr.make(fit=True)
-
-        img = qr.make_image(fill_color="black", back_color="white")
-
-        buffered = io.BytesIO()
-        img.save(buffered, format="PNG")
-        img_bytes = buffered.getvalue()
-
-        qr_base64 = base64.b64encode(img_bytes).decode("utf-8")
-        qr_data_url = f"data:image/png;base64,{qr_base64}"
-
-        return {
-            "status": "success",
-            "parcelId": payload.parcelId,
-            "qrCodeUrl": qr_data_url,
-            "message": "Notification generated successfully.",
-        }
-
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to generate QR notification: {str(e)}",
-        )
-
 @router.post("/{parcel_id}/confirm-delivery")
 async def confirm_delivery_complete(
     parcel_id: int,
     data: ConfirmDeliveryRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Marks the parcel as Delivered in PostgreSQL after on-chain escrow release.
-    """
     stmt = select(Parcel).where(Parcel.id == parcel_id)
     result = await db.execute(stmt)
     parcel = result.scalar_one_or_none()
 
     if not parcel:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Parcel with ID {parcel_id} not found",
-        )
+        raise HTTPException(status_code=404, detail=f"Parcel with ID {parcel_id} not found")
 
     parcel.status = "Delivered"
     parcel.proximity_checkpoint = "Delivered"
