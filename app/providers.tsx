@@ -18,7 +18,7 @@ import {
   QueryClient,
   QueryClientProvider,
 } from "@tanstack/react-query";
-
+import { fallback } from "wagmi";
 import "@rainbow-me/rainbowkit/styles.css";
 
 const projectId =
@@ -49,7 +49,11 @@ const config = createConfig({
   connectors,
   chains: [baseSepolia, base, hardhat],
   transports: {
-    [baseSepolia.id]: http("https://base-sepolia-rpc.publicnode.com"),
+    [baseSepolia.id]: fallback([
+    http("https://sepolia.base.org"),
+    http("https://base-sepolia-rpc.publicnode.com"),
+    http("https://1rpc.io/base-sepolia"),
+  ]),
     [base.id]: http(),
     [hardhat.id]: http("http://127.0.0.1:8545"),
   },
