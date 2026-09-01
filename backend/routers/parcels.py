@@ -5,6 +5,7 @@ import traceback
 import hashlib
 import secrets
 import math
+import resend
 
 from datetime import datetime, time
 from typing import Optional
@@ -40,6 +41,7 @@ router = APIRouter(
     tags=["Parcels & Notifications"],
 )
 
+resend.api_key = os.getenv("RESEND_API_KEY")
 
 # ============================================================
 # SCHEMAS
@@ -109,9 +111,6 @@ class ConfirmDeliveryRequest(BaseModel):
     delivery_code: Optional[str] = None
 
 
-# ============================================================
-# GENERATE DELIVERY OTP
-# ============================================================
 
 # ============================================================
 # GENERATE DELIVERY OTP
@@ -127,36 +126,31 @@ async def generate_otp(payload: OTPRequest):
         k.update(raw_otp.encode("utf-8"))
         confirmation_hash = "0x" + k.hexdigest()
 
-        # Build OTP email message
-        message = MessageSchema(
-            subject="POD Chain - Your Delivery OTP",
-            recipients=[payload.receiver_email],
-            body=f"""
-            <html>
-                <body style="font-family: Arial, sans-serif;">
+        # Resend HTTP Email Dispatch (Works across Render port blocks)
+        try:
+            email_params = {
+                "from": "POD Chain <onboarding@resend.dev>",
+                "to": [payload.receiver_email],
+                "subject": "POD Chain - Your Delivery OTP",
+                "html": f"""
+                <div style="font-family: Arial, sans-serif; padding: 20px; line-height: 1.5;">
                     <h2>Your POD Chain Delivery OTP</h2>
                     <p>Hello,</p>
                     <p>Your delivery verification OTP is:</p>
-                    <h1 style="letter-spacing: 8px; font-size: 32px;">{raw_otp}</h1>
+                    <h1 style="letter-spacing: 8px; font-size: 32px; color: #2563eb;">{raw_otp}</h1>
                     <p>Give this OTP to the courier when your package is delivered.</p>
                     <p>Do not share this code with anyone other than the courier handling your delivery.</p>
                     <hr>
-                    <p>POD Chain - Decentralized Proof of Delivery</p>
-                </body>
-            </html>
-            """,
-            subtype=MessageType.html,
-        )
-
-        # Attempt email dispatch safely without crashing on SMTP timeout/firewall block
-        try:
-            fm = FastMail(conf)
-            await fm.send_message(message)
-            print(f"[SUCCESS] Delivery PIN email dispatched to {payload.receiver_email}")
+                    <p style="color: #64748b; font-size: 12px;">POD Chain - Decentralized Proof of Delivery</p>
+                </div>
+                """,
+            }
+            resend.Emails.send(email_params)
+            print(f"[SUCCESS] Delivery PIN email dispatched via Resend to {payload.receiver_email}")
         except Exception as email_err:
-            print(f"[WARNING] SMTP timed out or blocked by host. Receiver PIN: {raw_otp} | Error: {email_err}")
+            print(f"[WARNING] Resend dispatch error. Receiver PIN: {raw_otp} | Error: {email_err}")
 
-        # Return hash to the sender (rawPin is also returned for testing/sync convenience)
+        # Return hash and rawPin
         return {
             "status": "success",
             "confirmationHash": confirmation_hash,
