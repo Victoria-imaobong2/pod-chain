@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useAccount, useWriteContract, usePublicClient } from "wagmi";
-import { parseEther } from "viem";
+import { useAccount, useWalletClient, usePublicClient, useSwitchChain } from "wagmi";
+import { createPublicClient, http, parseEther } from "viem";
+import { baseSepolia } from "viem/chains";
 
 export const ESCROW_CREATE_ABI = [
   {
@@ -22,9 +23,15 @@ const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_ESCROW_CONTRACT_ADDRESS ||
   process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
   "0x5ec609ee5e21c8e00050228a1c51077589be5e39") as `0x${string}`;
 
+const directPublicClient = createPublicClient({
+  chain: baseSepolia,
+  transport: http("https://sepolia.base.org"),
+});
+
 export function useCreateParcelHandler() {
-  const { isConnected } = useAccount();
-  const { writeContractAsync } = useWriteContract();
+  const { isConnected, address, chainId } = useAccount();
+  const { data: walletClient } = useWalletClient();
+  const { switchChainAsync } = useSwitchChain();
   const publicClient = usePublicClient();
   const [loading, setLoading] = useState(false);
 
@@ -43,8 +50,17 @@ export function useCreateParcelHandler() {
       process.env.NEXT_PUBLIC_API_BASE_URL || "https://podchain-backend.onrender.com";
 
     try {
-      if (!isConnected) {
+      if (!isConnected || !address) {
         throw new Error("Wallet is not connected. Please click Connect Wallet first.");
+      }
+
+      // Auto-switch MetaMask to Base Sepolia if needed
+      if (chainId !== baseSepolia.id && switchChainAsync) {
+        try {
+          await switchChainAsync({ chainId: baseSepolia.id });
+        } catch (switchErr) {
+          console.warn("Could not auto-switch chain:", switchErr);
+        }
       }
 
       // 1. IPFS Upload
@@ -100,25 +116,30 @@ export function useCreateParcelHandler() {
 
       // 3. Contract Write with direct backend relay fallback
       try {
+        if (!walletClient) {
+          throw new Error("Wallet client not available");
+        }
+
         const bountyWei = parseEther(formData.courierFeeEth || "0.001");
-        txHash = await writeContractAsync({
+
+        txHash = await walletClient.writeContract({
+          account: address,
+          chain: baseSepolia,
           address: CONTRACT_ADDRESS,
           abi: ESCROW_CREATE_ABI,
           functionName: "createParcel",
           args: [
-            formData.receiverPhone,
-            formData.destinationAddress,
-            formData.contentsName,
+            String(formData.receiverPhone || ""),
+            String(formData.destinationAddress || ""),
+            String(formData.contentsName || ""),
             formattedHash as `0x${string}`,
-            ipfsCid,
+            String(ipfsCid || ""),
           ],
           value: bountyWei,
-          gas: BigInt(500000),
         });
 
-        if (publicClient) {
-          await publicClient.waitForTransactionReceipt({ hash: txHash });
-        }
+        const client = publicClient || directPublicClient;
+        await client.waitForTransactionReceipt({ hash: txHash });
       } catch (clientErr) {
         console.warn("MetaMask client broadcast issue, using relay route...", clientErr);
 
