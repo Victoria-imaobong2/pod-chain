@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAccount, useWriteContract, usePublicClient } from "wagmi";
+import { useAccount, useWalletClient, usePublicClient, useSwitchChain } from "wagmi";
 import { createPublicClient, http } from "viem";
 import { baseSepolia } from "viem/chains";
 
@@ -33,27 +33,37 @@ const directPublicClient = createPublicClient({
 });
 
 export function useConfirmDeliveryHandler() {
-  const { isConnected } = useAccount();
-  const { writeContractAsync } = useWriteContract();
+  const { isConnected, address, chainId } = useAccount();
+  const { data: walletClient } = useWalletClient();
+  const { switchChainAsync } = useSwitchChain();
   const publicClient = usePublicClient();
   const [isPending, setIsPending] = useState(false);
 
   const handleConfirmDelivery = async (parcelId: number | string, pin: string) => {
     setIsPending(true);
     try {
-      if (!isConnected) {
-        throw new Error("Wallet not connected. Connect your courier wallet.");
+      if (!isConnected || !walletClient || !address) {
+        throw new Error("Wallet not connected. Please connect your courier wallet.");
+      }
+
+      // Auto-switch MetaMask to Base Sepolia if connected to a different network
+      if (chainId !== baseSepolia.id && switchChainAsync) {
+        try {
+          await switchChainAsync({ chainId: baseSepolia.id });
+        } catch (switchErr) {
+          console.warn("Could not auto-switch chain:", switchErr);
+        }
       }
 
       const idBigInt = BigInt(parcelId);
 
-      const txHash = await writeContractAsync({
+      const txHash = await walletClient.writeContract({
         address: CONTRACT_ADDRESS,
         abi: ESCROW_DELIVERY_ABI,
         functionName: "confirmDelivery",
         args: [idBigInt, pin],
-        chainId: 84532,
-        gas: BigInt(300000),
+        account: address,
+        chain: baseSepolia,
       });
 
       const client = publicClient || directPublicClient;

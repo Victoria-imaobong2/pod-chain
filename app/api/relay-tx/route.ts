@@ -28,7 +28,6 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { receiverPhone, destinationAddress, contentsName, confirmationHash, ipfsHash, feeEth } = body;
 
-    // Use deployer/funder private key from environment or fallback
     const rawKey = process.env.DEPLOYER_PRIVATE_KEY || process.env.PRIVATE_KEY;
     if (!rawKey) {
       return NextResponse.json(
@@ -46,16 +45,24 @@ export async function POST(req: Request) {
       transport: http("https://sepolia.base.org"),
     });
 
+    const formattedConfirmationHash = (
+      typeof confirmationHash === "string" && confirmationHash.startsWith("0x")
+        ? confirmationHash
+        : `0x${confirmationHash || ""}`
+    ) as `0x${string}`;
+
     const txHash = await client.writeContract({
+      account,
+      chain: baseSepolia,
       address: CONTRACT_ADDRESS,
       abi: ESCROW_CREATE_ABI,
       functionName: "createParcel",
       args: [
-        receiverPhone,
-        destinationAddress,
-        contentsName,
-        confirmationHash,
-        ipfsHash,
+        String(receiverPhone || ""),
+        String(destinationAddress || ""),
+        String(contentsName || ""),
+        formattedConfirmationHash,
+        String(ipfsHash || ""),
       ],
       value: parseEther(feeEth || "0.001"),
     });
