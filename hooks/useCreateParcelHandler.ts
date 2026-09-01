@@ -1,13 +1,6 @@
-"use client";
-
 import { useState } from "react";
+import { useAccount, useWriteContract, usePublicClient } from "wagmi";
 import { parseEther } from "viem";
-import { useWriteContract, usePublicClient, useAccount } from "wagmi";
-import { API_BASE_URL } from "@/lib/config";
-
-const CONTRACT_ADDRESS = (
-  process.env.NEXT_PUBLIC_ESCROW_CONTRACT_ADDRESS || process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
-  "0x5ec609ee5e21c8e00050228a1c51077589be5e39") as `0x${string}`;
 
 export const ESCROW_CREATE_ABI = [
   {
@@ -25,85 +18,54 @@ export const ESCROW_CREATE_ABI = [
   },
 ] as const;
 
-interface FormDataInput {
-  receiverEmail: string;
-  receiverPhone: string;
-  courierFeeEth: string;
-  ipfsHash?: string;
-  contentsName: string;
-  destinationAddress: string;
-}
+const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_ESCROW_CONTRACT_ADDRESS ||
+  process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
+  "0x5ec609ee5e21c8e00050228a1c51077589be5e39") as `0x${string}`;
 
 export function useCreateParcelHandler() {
   const { address } = useAccount();
-  const { writeContractAsync } = useWriteContract();
   const publicClient = usePublicClient();
-  const [isPending, setIsPending] = useState(false);
+  const { writeContractAsync } = useWriteContract();
+  const [loading, setLoading] = useState(false);
 
-  const handleCreateParcel = async (
-    formData: FormDataInput,
-    selectedFile: File | null
-  ) => {
-    setIsPending(true);
+  const handleCreateParcel = async (formData: {
+    receiverEmail: string;
+    receiverPhone: string;
+    contentsName: string;
+    destinationAddress: string;
+    courierFeeEth: string;
+  }) => {
+    setLoading(true);
+    const baseUrl =
+      process.env.NEXT_PUBLIC_API_BASE_URL || "https://podchain-backend.onrender.com";
 
     try {
-      const baseUrl = API_BASE_URL || "https://podchain-backend.onrender.com";
-
-      // 1. Upload proof photo to IPFS (if file selected)
-      let ipfsCid = formData.ipfsHash || "QmDefaultPlaceholderHash";
-      if (selectedFile) {
-        try {
-          const uploadData = new FormData();
-          uploadData.append("file", selectedFile);
-          const ipfsRes = await fetch("/api/ipfs", {
-            method: "POST",
-            body: uploadData,
-          });
-          if (ipfsRes.ok) {
-            const ipfsJson = await ipfsRes.json();
-            ipfsCid = ipfsJson.cid || ipfsJson.ipfsHash || ipfsCid;
-          }
-        } catch (e) {
-          console.warn("IPFS fallback used:", e);
-        }
-      }
-
-      // 2. Request confirmation hash from backend (Sender only receives the hash)
+      // 1. Generate OTP and keccak256 hash via backend
       const otpRes = await fetch(`${baseUrl}/api/v1/parcels/generate-otp`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           receiver_email: formData.receiverEmail,
-          receiver_phone: formData.receiverPhone,
         }),
       });
 
       if (!otpRes.ok) {
-        const errDetail = await otpRes.json().catch(() => ({}));
-        console.error("Backend Generate-OTP Error:", errDetail);
-        throw new Error(
-          errDetail.detail ||
-            `Backend returned ${otpRes.status}: ${otpRes.statusText}`
-        );
+        throw new Error("Failed to generate delivery OTP on the backend");
       }
 
-      const otpData = await otpRes.json();
-      const rawHash = otpData.confirmationHash || otpData.confirmation_hash;
+      const { confirmationHash, rawPin } = await otpRes.json();
 
-      if (!rawHash) {
-        throw new Error("Invalid response: confirmationHash missing from backend.");
-      }
-
-      const confirmationHash = (
-        rawHash.startsWith("0x") ? rawHash : `0x${rawHash}`
+      // 2. Format Hash for Viem / Solidity bytes32
+      const formattedHash = (
+        confirmationHash.startsWith("0x")
+          ? confirmationHash
+          : `0x${confirmationHash}`
       ) as `0x${string}`;
 
-      const trackingNumber = otpData.tracking_number || `POD-${Date.now()}`;
+      const bountyWei = parseEther(formData.courierFeeEth || "0.001");
+      const ipfsCid = "QmDefaultPlaceholderHash";
 
-      // 3. Call createParcel with bytes32 hash (no raw pin)
-      const bountyWei = parseEther(formData.courierFeeEth || "0.0001");
+      // 3. Execute contract transaction
       const txHash = await writeContractAsync({
         address: CONTRACT_ADDRESS,
         abi: ESCROW_CREATE_ABI,
@@ -112,7 +74,7 @@ export function useCreateParcelHandler() {
           formData.receiverPhone,
           formData.destinationAddress,
           formData.contentsName,
-          confirmationHash,
+          formattedHash,
           ipfsCid,
         ],
         value: bountyWei,
@@ -122,9 +84,11 @@ export function useCreateParcelHandler() {
         await publicClient.waitForTransactionReceipt({ hash: txHash });
       }
 
-      // 4. Sync metadata to backend (strictly without raw PIN)
+      // 4. Sync metadata to backend
       const token =
         typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+      const trackingNumber = `POD-${Date.now().toString().slice(-6)}`;
 
       await fetch(`${baseUrl}/api/v1/parcels/sync`, {
         method: "POST",
@@ -135,29 +99,30 @@ export function useCreateParcelHandler() {
         body: JSON.stringify({
           tracking_number: trackingNumber,
           contents_name: formData.contentsName,
-          destination_address: formData.destinationAddress,
-          receiver_phone: formData.receiverPhone,
           receiver_email: formData.receiverEmail,
-          sender_wallet: address,
-          tx_hash: txHash,
-          amount_eth: formData.courierFeeEth,
+          receiver_phone: formData.receiverPhone,
+          destination_address: formData.destinationAddress,
+          pin: rawPin,
           ipfs_hash: ipfsCid,
-          confirmation_hash: confirmationHash,
+          tx_hash: txHash,
         }),
-      }).catch((syncErr) => console.warn("Sync warning:", syncErr));
+      });
 
       return {
         success: true,
         txHash,
         trackingNumber,
       };
+    } catch (err: any) {
+      console.error("Create parcel error:", err);
+      throw err;
     } finally {
-      setIsPending(false);
+      setLoading(false);
     }
   };
 
-  return {
-    handleCreateParcel,
-    isPending,
-  };
+  return { 
+    handleCreateParcel, 
+    loading, 
+    isPending: loading};
 }
