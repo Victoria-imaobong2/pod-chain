@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAccount, useWriteContract, usePublicClient } from "wagmi";
+import { useWriteContract, usePublicClient } from "wagmi";
 import { parseEther } from "viem";
 
 export const ESCROW_CREATE_ABI = [
@@ -23,39 +23,65 @@ const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_ESCROW_CONTRACT_ADDRESS ||
   "0x5ec609ee5e21c8e00050228a1c51077589be5e39") as `0x${string}`;
 
 export function useCreateParcelHandler() {
-  const { address } = useAccount();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
   const [loading, setLoading] = useState(false);
 
-  const handleCreateParcel = async (formData: {
-    receiverEmail: string;
-    receiverPhone: string;
-    contentsName: string;
-    destinationAddress: string;
-    courierFeeEth: string;
-  }) => {
+  const handleCreateParcel = async (
+    formData: {
+      receiverEmail: string;
+      receiverPhone: string;
+      contentsName: string;
+      destinationAddress: string;
+      courierFeeEth: string;
+    },
+    file?: File | null
+  ) => {
     setLoading(true);
     const baseUrl =
       process.env.NEXT_PUBLIC_API_BASE_URL || "https://podchain-backend.onrender.com";
 
     try {
-      // 1. Generate OTP and keccak256 hash via backend
+      // 1. Upload File to IPFS (if provided)
+      let ipfsCid = "QmDefaultPlaceholderHash";
+      if (file) {
+        try {
+          const fileData = new FormData();
+          fileData.append("file", file);
+
+          const ipfsRes = await fetch("/api/ipfs", {
+            method: "POST",
+            body: fileData,
+          });
+
+          if (ipfsRes.ok) {
+            const ipfsJson = await ipfsRes.json();
+            ipfsCid = ipfsJson.cid || ipfsJson.IpfsHash || ipfsJson.hash || ipfsCid;
+          }
+        } catch (ipfsErr) {
+          console.warn("IPFS upload fallback to placeholder:", ipfsErr);
+        }
+      }
+
+      // 2. Generate OTP - Send BOTH receiver_email and receiver_phone for Pydantic validation
       const otpRes = await fetch(`${baseUrl}/api/v1/parcels/generate-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           receiver_email: formData.receiverEmail,
+          receiver_phone: formData.receiverPhone,
         }),
       });
 
       if (!otpRes.ok) {
-        throw new Error("Failed to generate delivery OTP on the backend");
+        const errText = await otpRes.text();
+        console.error("Backend OTP Error Details:", otpRes.status, errText);
+        throw new Error(`OTP Generation Failed (${otpRes.status}): ${errText}`);
       }
 
       const { confirmationHash, rawPin } = await otpRes.json();
 
-      // 2. Format Hash for Viem / Solidity bytes32
+      // 3. Format Hash for Viem / Solidity bytes32
       const formattedHash = (
         confirmationHash.startsWith("0x")
           ? confirmationHash
@@ -63,9 +89,8 @@ export function useCreateParcelHandler() {
       ) as `0x${string}`;
 
       const bountyWei = parseEther(formData.courierFeeEth || "0.001");
-      const ipfsCid = "QmDefaultPlaceholderHash";
 
-      // 3. Execute contract transaction
+      // 4. Contract call
       const txHash = await writeContractAsync({
         address: CONTRACT_ADDRESS,
         abi: ESCROW_CREATE_ABI,
@@ -84,7 +109,7 @@ export function useCreateParcelHandler() {
         await publicClient.waitForTransactionReceipt({ hash: txHash });
       }
 
-      // 4. Sync metadata to backend
+      // 5. Sync metadata to PostgreSQL backend
       const token =
         typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
@@ -113,16 +138,18 @@ export function useCreateParcelHandler() {
         txHash,
         trackingNumber,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to create parcel";
       console.error("Create parcel error:", err);
-      throw err;
+      throw new Error(message);
     } finally {
       setLoading(false);
     }
   };
 
-  return { 
-    handleCreateParcel, 
-    loading, 
-    isPending: loading};
+  return {
+    handleCreateParcel,
+    loading,
+    isPending: loading,
+  };
 }
