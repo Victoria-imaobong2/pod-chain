@@ -1,23 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import {
-  PublicKey,
-  Transaction,
-  SystemProgram,
-  LAMPORTS_PER_SOL,
-} from "@solana/web3.js";
-
-// Optional fallback escrow vault address or program ID
-const ESCROW_PROGRAM_OR_VAULT = new PublicKey(
-  process.env.NEXT_PUBLIC_SOLANA_PROGRAM_ID ||
-    "11111111111111111111111111111111"
-);
 
 export function useCreateParcelHandler() {
-  const { connection } = useConnection();
-  const { publicKey, sendTransaction, connected } = useWallet();
   const [loading, setLoading] = useState(false);
 
   const handleCreateParcel = async (
@@ -26,7 +11,7 @@ export function useCreateParcelHandler() {
       receiverPhone: string;
       contentsName: string;
       destinationAddress: string;
-      courierFeeEth: string; // Used as courierFeeSol
+      courierFeeEth: string; // Transacted as SOL
     },
     file?: File | null
   ) => {
@@ -35,11 +20,7 @@ export function useCreateParcelHandler() {
       process.env.NEXT_PUBLIC_API_BASE_URL || "https://podchain-backend.onrender.com";
 
     try {
-      if (!connected || !publicKey) {
-        throw new Error("Solana wallet is not connected. Please connect Phantom first.");
-      }
-
-      // 1. IPFS Upload
+      // 1. Optional IPFS Upload
       let ipfsCid = "QmDefaultPlaceholderHash";
       if (file) {
         try {
@@ -60,7 +41,7 @@ export function useCreateParcelHandler() {
         }
       }
 
-      // 2. Generate OTP & confirmation hash
+      // 2. Generate OTP & confirmation hash from backend
       const otpRes = await fetch(`${baseUrl}/api/v1/parcels/generate-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -76,69 +57,38 @@ export function useCreateParcelHandler() {
       }
 
       const { confirmationHash, rawPin } = await otpRes.json();
-
-      // 3. Build & Sign Solana Transaction
-      const lamports = Math.round(
-        parseFloat(formData.courierFeeEth || "0.001") * LAMPORTS_PER_SOL
-      );
-
-      const transaction = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: publicKey,
-          toPubkey: ESCROW_PROGRAM_OR_VAULT,
-          lamports: lamports > 0 ? lamports : 1_000_000, // 0.001 SOL fallback
-        })
-      );
-
-      const latestBlockhash = await connection.getLatestBlockhash("confirmed");
-      transaction.recentBlockhash = latestBlockhash.blockhash;
-      transaction.feePayer = publicKey;
-
-      let txSignature: string;
-
-      try {
-        txSignature = await sendTransaction(transaction, connection);
-        await connection.confirmTransaction(
-          {
-            signature: txSignature,
-            blockhash: latestBlockhash.blockhash,
-            lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-          },
-          "confirmed"
-        );
-      } catch (signErr) {
-        console.warn("Client signature failed, trying backend relay...", signErr);
-
-        // Fallback to backend relay if client refuses/fails
-        const relayRes = await fetch("/api/relay-tx", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            receiverPhone: formData.receiverPhone,
-            destinationAddress: formData.destinationAddress,
-            contentsName: formData.contentsName,
-            confirmationHash,
-            ipfsHash: ipfsCid,
-            feeSol: formData.courierFeeEth,
-            senderPublicKey: publicKey.toBase58(),
-          }),
-        });
-
-        if (!relayRes.ok) {
-          const relayErr = await relayRes.json();
-          throw new Error(relayErr.error || "Failed on-chain transaction");
-        }
-
-        const relayData = await relayRes.json();
-        txSignature = relayData.txHash;
-      }
-
-      // 4. Sync to Backend Database
-      const token =
-        typeof window !== "undefined" ? localStorage.getItem("token") : null;
       const trackingNumber = `POD-${Date.now().toString().slice(-6)}`;
 
-      await fetch(`${baseUrl}/api/v1/parcels/sync`, {
+      // 3. Relay transaction on-chain via backend keypair (no client wallet needed)
+      const relayRes = await fetch("/api/relay-tx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trackingNumber,
+          receiverPhone: formData.receiverPhone,
+          destinationAddress: formData.destinationAddress,
+          contentsName: formData.contentsName,
+          confirmationHash,
+          ipfsHash: ipfsCid,
+          feeSol: formData.courierFeeEth || "0.001",
+        }),
+      });
+
+      if (!relayRes.ok) {
+        const relayErr = await relayRes.json();
+        throw new Error(relayErr.error || "Failed on-chain transaction");
+      }
+
+      const relayData = await relayRes.json();
+      const txSignature = relayData.txHash;
+
+      // 4. Sync to backend database so it reflects in the dashboard
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("token") || localStorage.getItem("access_token")
+          : null;
+
+      const syncRes = await fetch(`${baseUrl}/api/v1/parcels/sync`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -157,6 +107,12 @@ export function useCreateParcelHandler() {
           tx_hash: txSignature,
         }),
       });
+
+      if (!syncRes.ok) {
+        const syncErr = await syncRes.text();
+        console.warn("Backend database sync failed:", syncErr);
+        throw new Error(`Parcel saved on-chain, but failed to sync database: ${syncErr}`);
+      }
 
       return {
         success: true,

@@ -69,10 +69,10 @@ export default function CreateParcelPage() {
     setErrorMsg(null);
     setSuccessData(null);
 
-    if (!connected) {
-      setErrorMsg("Please connect your Phantom wallet first to sign the escrow transaction.");
-      return;
-    }
+    //if (!connected) {
+      //setErrorMsg("Please connect your Phantom wallet first to sign the escrow transaction.");
+      //return;
+    //}
 
     try {
       const result = await handleCreateParcel(formData, file);

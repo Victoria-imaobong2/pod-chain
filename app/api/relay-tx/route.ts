@@ -13,12 +13,12 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const {
+      trackingNumber,
       receiverPhone,
       destinationAddress,
       contentsName,
       confirmationHash,
-      feeSol,
-      senderPublicKey,
+      courierFeeSol,
     } = body;
 
     const rpcUrl =
@@ -27,28 +27,27 @@ export async function POST(req: Request) {
       clusterApiUrl("devnet");
     const connection = new Connection(rpcUrl, "confirmed");
 
-    // 1. Reconstitute the backend payer keypair from env
     const secretKeyArray = JSON.parse(process.env.SOLANA_BACKEND_SECRET_KEY || "[]");
     if (!secretKeyArray.length) {
       throw new Error("SOLANA_BACKEND_SECRET_KEY is not configured.");
     }
     const backendPayer = Keypair.fromSecretKey(Uint8Array.from(secretKeyArray));
 
-    // 2. Format on-chain record payload
+    // Construct immutable audit record
     const recordPayload = JSON.stringify({
-      action: "CREATE_PARCEL",
+      protocol: "POD_CHAIN",
+      action: "ESCROW_CREATED",
+      tracking: trackingNumber,
+      item: contentsName,
       phone: receiverPhone,
       dest: destinationAddress,
-      item: contentsName,
       hash: confirmationHash,
-      fee: feeSol || "0.001",
-      sender: senderPublicKey,
+      fee_sol: courierFeeSol || "0.001",
       timestamp: Date.now(),
     });
 
     const memoProgramId = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 
-    // 3. Build & sign real transaction on Devnet
     const transaction = new Transaction().add(
       new TransactionInstruction({
         keys: [{ pubkey: backendPayer.publicKey, isSigner: true, isWritable: false }],
@@ -65,7 +64,7 @@ export async function POST(req: Request) {
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Internal relay error";
-    console.error("Relay signing error:", error);
+    console.error("Relay creation error:", error);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
