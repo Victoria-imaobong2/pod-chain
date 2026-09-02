@@ -139,7 +139,7 @@ class UserModel(Base):
 
     phone_number = Column(
         String,
-        unique=True,
+        unique=False,
         index=True,
         nullable=True,
     )
