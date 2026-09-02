@@ -115,6 +115,15 @@ class Parcel(Base):
         nullable=False,
     )
 
+    transaction_timestamp = Column(
+        DateTime,
+        nullable=True,
+    )
+    delivery_proof_image_url = Column(String, nullable=True,
+    )
+    delivered_at = Column(
+        DateTime=True, 
+        nullable=True)
    
     dest_lat = Column(Float, nullable=True)
     dest_lng = Column(Float, nullable=True)

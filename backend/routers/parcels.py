@@ -7,7 +7,7 @@ import secrets
 import math
 import httpx
 
-from datetime import datetime, time
+from datetime import datetime, timezone
 from typing import Optional
 
 import qrcode
@@ -80,6 +80,8 @@ class OTPRequest(BaseModel):
 class ConfirmDeliveryRequest(BaseModel):
     tx_hash: Optional[str] = None
     delivery_code: Optional[str] = None
+    pin: Optional[str] = None
+    delivery_proof_image_url: Optional[str] = None
 
 
 class GPSLocationUpdate(BaseModel):
@@ -146,7 +148,6 @@ async def generate_otp(payload: OTPRequest):
         k.update(raw_otp.encode("utf-8"))
         confirmation_hash = "0x" + k.hexdigest()
 
-        # Send via Brevo HTTP API
         try:
             await send_delivery_email(payload.receiver_email, raw_otp)
         except Exception as email_err:
@@ -193,6 +194,8 @@ async def sync_parcel(
                         "tracking_number": existing_tx.tracking_number,
                         "tx_hash": existing_tx.tx_hash,
                         "status": existing_tx.status,
+                        "transaction_timestamp": existing_tx.transaction_timestamp.isoformat() if getattr(existing_tx, "transaction_timestamp", None) else None,
+                        "delivery_proof_image_url": getattr(existing_tx, "delivery_proof_image_url", None),
                     },
                 }
 
@@ -211,10 +214,13 @@ async def sync_parcel(
                     "tracking_number": existing_tracking.tracking_number,
                     "tx_hash": existing_tracking.tx_hash,
                     "status": existing_tracking.status,
+                    "transaction_timestamp": existing_tracking.transaction_timestamp.isoformat() if getattr(existing_tracking, "transaction_timestamp", None) else None,
+                    "delivery_proof_image_url": getattr(existing_tracking, "delivery_proof_image_url", None),
                 },
             }
-
+        
         pin_value = data.pin or data.delivery_code
+        tx_time = datetime.now(timezone.utc) if data.tx_hash else None
 
         new_parcel = Parcel(
             tracking_number=data.tracking_number,
@@ -226,6 +232,8 @@ async def sync_parcel(
             pin=pin_value,
             ipfs_hash=data.ipfs_hash or None,
             tx_hash=data.tx_hash or None,
+            transaction_timestamp=tx_time,
+            delivery_proof_image_url=data.ipfs_hash or None,
             status="Created",
             proximity_checkpoint="Created",
         )
@@ -244,7 +252,9 @@ async def sync_parcel(
                 "receiver_phone": new_parcel.receiver_phone,
                 "status": new_parcel.status,
                 "tx_hash": new_parcel.tx_hash,
-                "created_at": new_parcel.created_at,
+                "transaction_timestamp": new_parcel.transaction_timestamp.isoformat() if new_parcel.transaction_timestamp else None,
+                "delivery_proof_image_url": new_parcel.delivery_proof_image_url,
+                "created_at": new_parcel.created_at.isoformat() if new_parcel.created_at else None,
             },
         }
 
@@ -260,7 +270,7 @@ async def sync_parcel(
 
 
 # ============================================================
-# RECEIVER SHIPMENTS (PUBLIC / EMAIL-BASED & AUTHENTICATED)
+# RECEIVER SHIPMENTS
 # ============================================================
 
 @router.get("/receiver/{email}")
@@ -268,9 +278,6 @@ async def get_receiver_shipments_by_email(
     email: str,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Returns parcels explicitly addressed to the receiver's email with PIN verification.
-    """
     try:
         clean_email = email.strip().lower()
         stmt = (
@@ -295,7 +302,10 @@ async def get_receiver_shipments_by_email(
                 "status": p.status,
                 "pin": p.pin,
                 "ipfs_hash": p.ipfs_hash,
+                "delivery_proof_image_url": getattr(p, "delivery_proof_image_url", None) or p.ipfs_hash,
                 "tx_hash": p.tx_hash,
+                "transaction_timestamp": p.transaction_timestamp.isoformat() if getattr(p, "transaction_timestamp", None) else None,
+                "delivered_at": p.delivered_at.isoformat() if getattr(p, "delivered_at", None) else None,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
             }
             for p in parcels
@@ -336,7 +346,10 @@ async def get_receiver_shipments(
                 "status": p.status,
                 "pin": p.pin,
                 "ipfs_hash": p.ipfs_hash,
+                "delivery_proof_image_url": getattr(p, "delivery_proof_image_url", None) or p.ipfs_hash,
                 "tx_hash": p.tx_hash,
+                "transaction_timestamp": p.transaction_timestamp.isoformat() if getattr(p, "transaction_timestamp", None) else None,
+                "delivered_at": p.delivered_at.isoformat() if getattr(p, "delivered_at", None) else None,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
             }
             for p in parcels
@@ -375,7 +388,10 @@ async def get_all_parcels(
                 "status": p.status,
                 "pin": p.pin,
                 "ipfs_hash": p.ipfs_hash,
+                "delivery_proof_image_url": getattr(p, "delivery_proof_image_url", None) or p.ipfs_hash,
                 "tx_hash": p.tx_hash,
+                "transaction_timestamp": p.transaction_timestamp.isoformat() if getattr(p, "transaction_timestamp", None) else None,
+                "delivered_at": p.delivered_at.isoformat() if getattr(p, "delivered_at", None) else None,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
             }
             for p in parcels
@@ -409,6 +425,7 @@ async def get_available_parcels(db: AsyncSession = Depends(get_db)):
                 "status": p.status,
                 "tx_hash": p.tx_hash,
                 "ipfs_hash": p.ipfs_hash,
+                "transaction_timestamp": p.transaction_timestamp.isoformat() if getattr(p, "transaction_timestamp", None) else None,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
             }
             for p in parcels
@@ -522,6 +539,10 @@ async def update_proximity(
     }
 
 
+# ============================================================
+# CONFIRM DELIVERY & RECORD PICTURE/TIMESTAMP
+# ============================================================
+
 @router.post("/{parcel_id}/confirm-delivery")
 async def confirm_delivery_complete(
     parcel_id: int,
@@ -535,10 +556,22 @@ async def confirm_delivery_complete(
     if not parcel:
         raise HTTPException(status_code=404, detail=f"Parcel with ID {parcel_id} not found")
 
+    # Optional verification if PIN is passed
+    pin_input = data.pin or data.delivery_code
+    if pin_input and str(parcel.pin).strip() != str(pin_input).strip():
+        raise HTTPException(status_code=400, detail="Invalid delivery confirmation PIN")
+
+    now = datetime.now(timezone.utc)
     parcel.status = "Delivered"
     parcel.proximity_checkpoint = "Delivered"
+    parcel.delivered_at = now
+
     if data.tx_hash:
         parcel.tx_hash = data.tx_hash
+        parcel.transaction_timestamp = now
+
+    if data.delivery_proof_image_url:
+        parcel.delivery_proof_image_url = data.delivery_proof_image_url
 
     await db.commit()
     await db.refresh(parcel)
@@ -547,4 +580,7 @@ async def confirm_delivery_complete(
         "message": f"Parcel {parcel_id} marked as Delivered",
         "status": parcel.status,
         "proximity_checkpoint": parcel.proximity_checkpoint,
+        "delivered_at": parcel.delivered_at.isoformat() if parcel.delivered_at else None,
+        "transaction_timestamp": parcel.transaction_timestamp.isoformat() if parcel.transaction_timestamp else None,
+        "delivery_proof_image_url": parcel.delivery_proof_image_url,
     }
