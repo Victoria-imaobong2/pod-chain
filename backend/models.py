@@ -119,11 +119,13 @@ class Parcel(Base):
         DateTime,
         nullable=True,
     )
+
     delivery_proof_image_url = Column(String, nullable=True,
     )
     delivered_at = Column(
-        DateTime=True, 
-        nullable=True)
+        DateTime(timezone=True), 
+        nullable=True,
+        )
    
     dest_lat = Column(Float, nullable=True)
     dest_lng = Column(Float, nullable=True)
