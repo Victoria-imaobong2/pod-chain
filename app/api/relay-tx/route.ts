@@ -1,76 +1,71 @@
 import { NextResponse } from "next/server";
-import { createWalletClient, http, parseEther } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { baseSepolia } from "viem/chains";
-
-export const ESCROW_CREATE_ABI = [
-  {
-    type: "function",
-    name: "createParcel",
-    stateMutability: "payable",
-    inputs: [
-      { name: "_receiverPhone", type: "string" },
-      { name: "_destinationAddress", type: "string" },
-      { name: "_contentsName", type: "string" },
-      { name: "_confirmationHash", type: "bytes32" },
-      { name: "_ipfsHash", type: "string" },
-    ],
-    outputs: [],
-  },
-] as const;
-
-const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_ESCROW_CONTRACT_ADDRESS ||
-  process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
-  "0x5ec609ee5e21c8e00050228a1c51077589be5e39") as `0x${string}`;
+import {
+  Connection,
+  clusterApiUrl,
+  PublicKey,
+  Transaction,
+  TransactionInstruction,
+  Keypair,
+  sendAndConfirmTransaction,
+} from "@solana/web3.js";
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { receiverPhone, destinationAddress, contentsName, confirmationHash, ipfsHash, feeEth } = body;
+    const {
+      receiverPhone,
+      destinationAddress,
+      contentsName,
+      confirmationHash,
+      feeSol,
+      senderPublicKey,
+    } = body;
 
-    const rawKey = process.env.DEPLOYER_PRIVATE_KEY || process.env.PRIVATE_KEY;
-    if (!rawKey) {
-      return NextResponse.json(
-        { error: "Server missing PRIVATE_KEY for relay" },
-        { status: 500 }
-      );
+    const rpcUrl =
+      process.env.SOLANA_RPC_URL ||
+      process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
+      clusterApiUrl("devnet");
+    const connection = new Connection(rpcUrl, "confirmed");
+
+    // 1. Reconstitute the backend payer keypair from env
+    const secretKeyArray = JSON.parse(process.env.SOLANA_BACKEND_SECRET_KEY || "[]");
+    if (!secretKeyArray.length) {
+      throw new Error("SOLANA_BACKEND_SECRET_KEY is not configured.");
     }
+    const backendPayer = Keypair.fromSecretKey(Uint8Array.from(secretKeyArray));
 
-    const formattedKey = (rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`) as `0x${string}`;
-    const account = privateKeyToAccount(formattedKey);
-
-    const client = createWalletClient({
-      account,
-      chain: baseSepolia,
-      transport: http("https://sepolia.base.org"),
+    // 2. Format on-chain record payload
+    const recordPayload = JSON.stringify({
+      action: "CREATE_PARCEL",
+      phone: receiverPhone,
+      dest: destinationAddress,
+      item: contentsName,
+      hash: confirmationHash,
+      fee: feeSol || "0.001",
+      sender: senderPublicKey,
+      timestamp: Date.now(),
     });
 
-    const formattedConfirmationHash = (
-      typeof confirmationHash === "string" && confirmationHash.startsWith("0x")
-        ? confirmationHash
-        : `0x${confirmationHash || ""}`
-    ) as `0x${string}`;
+    const memoProgramId = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 
-    const txHash = await client.writeContract({
-      account,
-      chain: baseSepolia,
-      address: CONTRACT_ADDRESS,
-      abi: ESCROW_CREATE_ABI,
-      functionName: "createParcel",
-      args: [
-        String(receiverPhone || ""),
-        String(destinationAddress || ""),
-        String(contentsName || ""),
-        formattedConfirmationHash,
-        String(ipfsHash || ""),
-      ],
-      value: parseEther(feeEth || "0.001"),
+    // 3. Build & sign real transaction on Devnet
+    const transaction = new Transaction().add(
+      new TransactionInstruction({
+        keys: [{ pubkey: backendPayer.publicKey, isSigner: true, isWritable: false }],
+        programId: memoProgramId,
+        data: Buffer.from(recordPayload, "utf-8"),
+      })
+    );
+
+    const txSignature = await sendAndConfirmTransaction(connection, transaction, [backendPayer]);
+
+    return NextResponse.json({
+      success: true,
+      txHash: txSignature,
     });
-
-    return NextResponse.json({ success: true, txHash });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Failed to relay tx";
-    console.error("Relay error:", error);
+    const msg = error instanceof Error ? error.message : "Internal relay error";
+    console.error("Relay signing error:", error);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

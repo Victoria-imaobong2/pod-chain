@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount } from "wagmi";
+import dynamic from "next/dynamic";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { useCreateParcelHandler } from "../../../hooks/useCreateParcelHandler";
 import { 
   Package, 
@@ -20,9 +20,16 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+// Dynamically import WalletMultiButton to prevent Next.js SSR hydration mismatches
+const WalletMultiButton = dynamic(
+  async () =>
+    (await import("@solana/wallet-adapter-react-ui")).WalletMultiButton,
+  { ssr: false }
+);
+
 export default function CreateParcelPage() {
   const router = useRouter();
-  const { isConnected } = useAccount();
+  const { connected } = useWallet();
   const { handleCreateParcel, isPending } = useCreateParcelHandler();
 
   const [formData, setFormData] = useState({
@@ -30,7 +37,7 @@ export default function CreateParcelPage() {
     receiverPhone: "",
     contentsName: "",
     destinationAddress: "",
-    courierFeeEth: "0.001",
+    courierFeeEth: "0.001", // Handled as SOL amount in the hook
   });
   const [file, setFile] = useState<File | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -62,8 +69,8 @@ export default function CreateParcelPage() {
     setErrorMsg(null);
     setSuccessData(null);
 
-    if (!isConnected) {
-      setErrorMsg("Please connect your Web3 wallet first to sign the escrow transaction.");
+    if (!connected) {
+      setErrorMsg("Please connect your Phantom wallet first to sign the escrow transaction.");
       return;
     }
 
@@ -82,7 +89,7 @@ export default function CreateParcelPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 py-12 px-4 sm:px-6 lg:px-8 flex flex-col items-center">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 py-12 px-4 sm:px-6 lg:px-8 flex flex-col items-center font-sans antialiased">
       <div className="w-full max-w-2xl">
         
         {/* Navigation & Header */}
@@ -93,7 +100,7 @@ export default function CreateParcelPage() {
           >
             <ArrowLeft className="w-4 h-4" /> Back to Dashboard
           </Link>
-          <ConnectButton showBalance={false} chainStatus="icon" />
+          <WalletMultiButton className="!bg-teal-600 hover:!bg-teal-700 !h-10 !px-4 !rounded-xl !text-sm !font-bold" />
         </div>
 
         {/* Card Container */}
@@ -104,7 +111,7 @@ export default function CreateParcelPage() {
               Create Delivery Escrow
             </h1>
             <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
-              Lock payment in the smart contract. Funds are automatically released to the courier upon PIN verification.
+              Lock payment in the Solana smart escrow. Funds are automatically released to the courier upon PIN verification.
             </p>
           </div>
 
@@ -113,9 +120,9 @@ export default function CreateParcelPage() {
             <div className="mb-6 p-4 rounded-xl bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-500/40 text-teal-800 dark:text-teal-200 flex items-start gap-3">
               <CheckCircle2 className="w-5 h-5 text-teal-600 dark:text-teal-400 shrink-0 mt-0.5" />
               <div className="text-sm">
-                <p className="font-semibold text-teal-900 dark:text-teal-300">Escrow Created Successfully!</p>
+                <p className="font-semibold text-teal-900 dark:text-teal-300">Escrow Created Successfully on Solana Devnet!</p>
                 <p className="mt-1">Tracking Number: <span className="font-mono font-bold text-slate-900 dark:text-white">{successData.trackingNumber}</span></p>
-                <p className="text-xs text-teal-700 dark:text-teal-400/80 break-all mt-0.5">TX: {successData.txHash}</p>
+                <p className="text-xs text-teal-700 dark:text-teal-400/80 break-all mt-0.5 font-mono">TX: {successData.txHash}</p>
                 <div className="mt-3">
                   <Link
                     href="/dashboard"
@@ -133,7 +140,7 @@ export default function CreateParcelPage() {
             <div className="mb-6 p-4 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-500/40 text-rose-800 dark:text-rose-200 flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
               <div className="text-sm">
-                <p className="font-semibold text-rose-900 dark:text-rose-300">Transaction Reverted</p>
+                <p className="font-semibold text-rose-900 dark:text-rose-300">Transaction Failed</p>
                 <p className="text-xs text-rose-700 dark:text-rose-300/80 mt-1 leading-relaxed">{errorMsg}</p>
               </div>
             </div>
@@ -221,10 +228,10 @@ export default function CreateParcelPage() {
               </div>
             </div>
 
-            {/* Courier Fee (ETH) */}
+            {/* Courier Fee (SOL) */}
             <div>
               <label htmlFor="courierFeeEth" className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-2">
-                Courier Escrow Fee (ETH)
+                Courier Escrow Fee (SOL)
               </label>
               <div className="relative">
                 <Coins className="w-5 h-5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -232,8 +239,8 @@ export default function CreateParcelPage() {
                   id="courierFeeEth"
                   name="courierFeeEth"
                   type="number"
-                  step="0.0001"
-                  min="0.0001"
+                  step="0.0005"
+                  min="0.0005"
                   required
                   value={formData.courierFeeEth}
                   onChange={handleChange}
@@ -282,7 +289,7 @@ export default function CreateParcelPage() {
               {isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Processing Escrow & Deploying On-Chain...</span>
+                  <span>Processing Escrow & Signing Transaction...</span>
                 </>
               ) : (
                 <span>Create & Deploy Delivery Escrow</span>

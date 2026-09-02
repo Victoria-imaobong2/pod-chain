@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import {
   Truck,
   QrCode,
@@ -16,10 +17,8 @@ import {
   Copy,
   ChevronDown,
 } from "lucide-react";
-import { useAccount, useDisconnect, useBalance } from "wagmi";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { createPublicClient, http } from "viem";
-import { baseSepolia } from "viem/chains";
+import { useWallet, useConnection } from "@solana/wallet-adapter-react";
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 
 import StatusBadge from "@/components/shared/StatusBadge";
 import BottomNavCourier from "@/components/navigation/BottomNavCourier";
@@ -27,32 +26,13 @@ import FreeRouteMap from "@/components/shared/FreeRouteMap";
 import { useConfirmDeliveryHandler } from "../../../hooks/useConfirmDeliveryHandler";
 import { API_BASE_URL } from "@/lib/config";
 
-const publicClient = createPublicClient({
-  chain: baseSepolia,
-  transport: http("https://sepolia.base.org"),
-});
+// Dynamically import WalletMultiButton to prevent Next.js SSR hydration mismatches
+const WalletMultiButton = dynamic(
+  async () =>
+    (await import("@solana/wallet-adapter-react-ui")).WalletMultiButton,
+  { ssr: false }
+);
 
-export const ESCROW_ABI = [
-  {
-    type: "function",
-    name: "parcelCount",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "confirmDelivery",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "_parcelId", type: "uint256" },
-      { name: "_pin", type: "string" },
-    ],
-    outputs: [],
-  },
-] as const;
-
-const CONTRACT_ADDRESS = "0x5ec609ee5e21c8e00050228a1c51077589be5e39" as `0x${string}`;
 export interface CourierParcel {
   id: number | string;
   tracking_number?: string;
@@ -66,16 +46,18 @@ export interface CourierParcel {
   status?: "Created" | "InTransit" | "Delivered";
   tx_hash?: string;
   created_at?: string;
-  amountEth?: string;
+  amountSol?: string;
 }
 
 const subscribe = () => () => {};
 
 export default function CourierDashboard() {
   const router = useRouter();
-  const { address, isConnected } = useAccount();
-  const { disconnect } = useDisconnect();
-  const { data: balanceData } = useBalance({ address });
+  const { connection } = useConnection();
+  const { publicKey, connected, disconnect } = useWallet();
+  const address = publicKey ? publicKey.toBase58() : null;
+
+  const [solBalance, setSolBalance] = useState<number | null>(null);
   const { handleConfirmDelivery, isPending } = useConfirmDeliveryHandler();
 
   const isClient = useSyncExternalStore(
@@ -92,6 +74,40 @@ export default function CourierDashboard() {
   const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Fetch live SOL balance
+  const fetchBalance = useCallback(async () => {
+    if (publicKey && connection) {
+      try {
+        const balance = await connection.getBalance(publicKey);
+        setSolBalance(balance / LAMPORTS_PER_SOL);
+      } catch (err) {
+        console.error("Failed to fetch SOL balance:", err);
+      }
+    } else {
+      setSolBalance(null);
+    }
+  }, [publicKey, connection]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (publicKey && connection) {
+        try {
+          const balance = await connection.getBalance(publicKey);
+          if (active) setSolBalance(balance / LAMPORTS_PER_SOL);
+        } catch (err) {
+          console.error("Failed to fetch SOL balance:", err);
+        }
+      } else if (active) {
+        setSolBalance(null);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [publicKey, connection]);
 
   const fetchAllParcels = useCallback(async () => {
     try {
@@ -172,14 +188,13 @@ export default function CourierDashboard() {
 
   const displayedParcels = getDisplayedParcels();
 
-  // 1. Accept Job: Updates backend and registers courier on-chain without auto-opening the OTP modal
- const handleAcceptJob = async (parcelId: number | string) => {
-    if (!isConnected || !address) {
-      alert("Please connect your wallet first.");
+  // 1. Accept Job
+  const handleAcceptJob = async (parcelId: number | string) => {
+    if (!connected || !address) {
+      alert("Please connect your Solana wallet first.");
       return;
     }
 
-    // Ensure OTP confirmation dialog remains closed
     setSelectedParcel(null);
 
     try {
@@ -238,15 +253,13 @@ export default function CourierDashboard() {
   // 3. Verify PIN Settlement
   const handleVerifyDelivery = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!selectedParcel || !isConnected) return;
+    if (!selectedParcel || !connected) return;
 
-    setStatusMsg({ type: "info", text: "Submitting proof of delivery on-chain..." });
+    setStatusMsg({ type: "info", text: "Submitting proof of delivery on Solana..." });
 
     const onChainId = Number(selectedParcel.id) || 1;
-    console.log("--> Calling confirmDeliveryWithCode for ID:", onChainId, "with PIN:", pinInput);
 
     try {
-      // 1. Execute smart contract payout
       const result = await handleConfirmDelivery(onChainId, pinInput);
 
       if (result?.success) {
@@ -254,7 +267,6 @@ export default function CourierDashboard() {
 
         const baseUrl = API_BASE_URL || "http://127.0.0.1:8000";
 
-        // 2. Notify backend database that delivery was verified on-chain
         try {
           await fetch(`${baseUrl}/api/v1/parcels/${selectedParcel.id}/confirm-delivery`, {
             method: "POST",
@@ -268,7 +280,6 @@ export default function CourierDashboard() {
           console.warn("Backend confirm sync fallback:", dbErr);
         }
 
-        // 3. Update local state immediately so it moves to the 'Completed' tab
         setParcels((prev) =>
           prev.map((p) =>
             String(p.id) === String(selectedParcel.id)
@@ -278,6 +289,8 @@ export default function CourierDashboard() {
         );
 
         setPinInput("");
+        fetchBalance();
+
         setTimeout(async () => {
           setSelectedParcel(null);
           setStatusMsg(null);
@@ -302,7 +315,7 @@ export default function CourierDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-8 pb-32 max-w-7xl mx-auto font-sans antialiased">
-      {/* HEADER WITH PROFILE & RAINBOWKIT CONNECT BUTTON */}
+      {/* HEADER WITH PROFILE & SOLANA WALLET BUTTON */}
       <header className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-200 pb-6 mb-6 gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -312,7 +325,7 @@ export default function CourierDashboard() {
             </span>
           </div>
           <p className="text-slate-500 text-sm font-medium mt-0.5">
-            Accept orders, record GPS checkpoints, and execute instant smart contract payouts.
+            Accept orders, record GPS checkpoints, and execute instant Solana escrow payouts.
           </p>
         </div>
 
@@ -328,7 +341,7 @@ export default function CourierDashboard() {
 
           {/* Profile & Wallet Drawer Button */}
           <div className="relative">
-            {isConnected && address ? (
+            {connected && address ? (
               <button
                 type="button"
                 onClick={() => setShowProfileMenu(!showProfileMenu)}
@@ -339,25 +352,25 @@ export default function CourierDashboard() {
                 </div>
                 <div className="text-left hidden sm:block">
                   <p className="text-xs font-bold text-slate-800 font-mono">
-                    {address.substring(0, 6)}...{address.slice(-4)}
+                    {address.substring(0, 4)}...{address.slice(-4)}
                   </p>
                   <p className="text-[10px] text-teal-600 font-semibold font-mono">
-                    {balanceData ? `${parseFloat(balanceData.formatted).toFixed(3)} ${balanceData.symbol}` : "0.00 ETH"}
+                    {solBalance !== null ? `${solBalance.toFixed(3)} SOL` : "Loading..."}
                   </p>
                 </div>
                 <ChevronDown size={14} className="text-slate-400" />
               </button>
             ) : (
-              <ConnectButton showBalance={false} />
+              <WalletMultiButton className="!bg-teal-600 hover:!bg-teal-700 !h-10 !px-4 !rounded-xl !text-sm !font-bold" />
             )}
 
             {/* Profile Dropdown */}
-            {showProfileMenu && isConnected && (
+            {showProfileMenu && connected && address && (
               <div className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl p-4 z-50 animate-in fade-in">
-                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Courier Wallet</p>
+                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Courier Wallet (Solana)</p>
                 <div className="flex items-center justify-between mt-1 mb-3 bg-slate-50 p-2 rounded-xl border border-slate-200">
                   <span className="font-mono text-xs text-slate-700 font-semibold">
-                    {address?.substring(0, 6)}...{address?.slice(-4)}
+                    {address.substring(0, 4)}...{address.slice(-4)}
                   </span>
                   <button
                     type="button"
@@ -371,12 +384,11 @@ export default function CourierDashboard() {
                 <div className="mb-3">
                   <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Balance</p>
                   <p className="text-lg font-black text-slate-900 font-mono">
-                    {balanceData ? `${parseFloat(balanceData.formatted).toFixed(4)} ${balanceData.symbol}` : "0.00 ETH"}
+                    {solBalance !== null ? `${solBalance.toFixed(4)} SOL` : "0.0000 SOL"}
                   </p>
                 </div>
 
                 <div className="pt-2 border-t border-slate-100 flex flex-col gap-2">
-                  <ConnectButton />
                   <button
                     type="button"
                     onClick={() => {

@@ -1,65 +1,33 @@
 "use client";
 
-import React, { useState } from "react";
-import { WagmiProvider, createConfig, http } from "wagmi";
-import { baseSepolia, base, hardhat } from "wagmi/chains";
+import React, { useMemo, useState } from "react";
 import {
-  RainbowKitProvider,
-  darkTheme,
-  connectorsForWallets,
-} from "@rainbow-me/rainbowkit";
-import {
-  metaMaskWallet,
-  injectedWallet,
-  rainbowWallet,
-  walletConnectWallet,
-} from "@rainbow-me/rainbowkit/wallets";
+  ConnectionProvider,
+  WalletProvider,
+} from "@solana/wallet-adapter-react";
+import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
+import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
+import { clusterApiUrl } from "@solana/web3.js";
 import {
   QueryClient,
   QueryClientProvider,
 } from "@tanstack/react-query";
-import { fallback } from "wagmi";
-import "@rainbow-me/rainbowkit/styles.css";
 
-const projectId =
-  process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ||
-  "ff747dfbea36ec05c5b46a631150a909";
-
-// 1. Build connectors list containing MetaMask & Injected
-const connectors = connectorsForWallets(
-  [
-    {
-      groupName: "Recommended",
-      wallets: [
-        metaMaskWallet,
-        injectedWallet,
-        rainbowWallet,
-        walletConnectWallet,
-      ],
-    },
-  ],
-  {
-    appName: "POD Chain Logistics",
-    projectId: projectId,
-  }
-);
-
-// 2. Pass connectors directly into createConfig
-const config = createConfig({
-  connectors,
-  chains: [baseSepolia],
-  transports: {
-    [baseSepolia.id]: fallback([
-    http("https://sepolia.base.org"),
-    http("https://base-sepolia-rpc.publicnode.com"),
-    http("https://1rpc.io/base-sepolia"),
-  ]),
-
-  },
-  ssr: false,
-});
+// Default Solana Wallet Adapter styling
+import "@solana/wallet-adapter-react-ui/styles.css";
 
 export function Web3Provider({ children }: { children: React.ReactNode }) {
+  // 1. Configure network & RPC endpoint (Devnet default)
+  const network = WalletAdapterNetwork.Devnet;
+  const endpoint = useMemo(
+    () => process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl(network),
+    [network]
+  );
+
+  // 2. Configure Wallets (Standard Wallets like Phantom/Solflare auto-detect via Wallet Standard)
+  const wallets = useMemo(() => [], []);
+
+  // 3. React Query client setup
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -72,18 +40,15 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <WagmiProvider config={config}>
-      <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider
-          theme={darkTheme({
-            accentColor: "#0d9488",
-            borderRadius: "medium",
-          })}
-        >
-          {children}
-        </RainbowKitProvider>
-      </QueryClientProvider>
-    </WagmiProvider>
+    <ConnectionProvider endpoint={endpoint}>
+      <WalletProvider wallets={wallets} autoConnect>
+        <WalletModalProvider>
+          <QueryClientProvider client={queryClient}>
+            {children}
+          </QueryClientProvider>
+        </WalletModalProvider>
+      </WalletProvider>
+    </ConnectionProvider>
   );
 }
 

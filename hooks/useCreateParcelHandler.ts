@@ -1,38 +1,23 @@
+"use client";
+
 import { useState } from "react";
-import { useAccount, useWalletClient, usePublicClient, useSwitchChain } from "wagmi";
-import { createPublicClient, http, parseEther } from "viem";
-import { baseSepolia } from "viem/chains";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import {
+  PublicKey,
+  Transaction,
+  SystemProgram,
+  LAMPORTS_PER_SOL,
+} from "@solana/web3.js";
 
-export const ESCROW_CREATE_ABI = [
-  {
-    type: "function",
-    name: "createParcel",
-    stateMutability: "payable",
-    inputs: [
-      { name: "_receiverPhone", type: "string" },
-      { name: "_destinationAddress", type: "string" },
-      { name: "_contentsName", type: "string" },
-      { name: "_confirmationHash", type: "bytes32" },
-      { name: "_ipfsHash", type: "string" },
-    ],
-    outputs: [],
-  },
-] as const;
-
-const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_ESCROW_CONTRACT_ADDRESS ||
-  process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
-  "0x5ec609ee5e21c8e00050228a1c51077589be5e39") as `0x${string}`;
-
-const directPublicClient = createPublicClient({
-  chain: baseSepolia,
-  transport: http("https://sepolia.base.org"),
-});
+// Optional fallback escrow vault address or program ID
+const ESCROW_PROGRAM_OR_VAULT = new PublicKey(
+  process.env.NEXT_PUBLIC_SOLANA_PROGRAM_ID ||
+    "11111111111111111111111111111111"
+);
 
 export function useCreateParcelHandler() {
-  const { isConnected, address, chainId } = useAccount();
-  const { data: walletClient } = useWalletClient();
-  const { switchChainAsync } = useSwitchChain();
-  const publicClient = usePublicClient();
+  const { connection } = useConnection();
+  const { publicKey, sendTransaction, connected } = useWallet();
   const [loading, setLoading] = useState(false);
 
   const handleCreateParcel = async (
@@ -41,7 +26,7 @@ export function useCreateParcelHandler() {
       receiverPhone: string;
       contentsName: string;
       destinationAddress: string;
-      courierFeeEth: string;
+      courierFeeEth: string; // Used as courierFeeSol
     },
     file?: File | null
   ) => {
@@ -50,17 +35,8 @@ export function useCreateParcelHandler() {
       process.env.NEXT_PUBLIC_API_BASE_URL || "https://podchain-backend.onrender.com";
 
     try {
-      if (!isConnected || !address) {
-        throw new Error("Wallet is not connected. Please click Connect Wallet first.");
-      }
-
-      // Auto-switch MetaMask to Base Sepolia if needed
-      if (chainId !== baseSepolia.id && switchChainAsync) {
-        try {
-          await switchChainAsync({ chainId: baseSepolia.id });
-        } catch (switchErr) {
-          console.warn("Could not auto-switch chain:", switchErr);
-        }
+      if (!connected || !publicKey) {
+        throw new Error("Solana wallet is not connected. Please connect Phantom first.");
       }
 
       // 1. IPFS Upload
@@ -101,48 +77,39 @@ export function useCreateParcelHandler() {
 
       const { confirmationHash, rawPin } = await otpRes.json();
 
-      // Ensure 32-byte hex hash format with exact 66 characters
-      let formattedHash = confirmationHash || "";
-      if (!formattedHash.startsWith("0x")) {
-        formattedHash = `0x${formattedHash}`;
-      }
-      if (formattedHash.length < 66) {
-        formattedHash = formattedHash.padEnd(66, "0");
-      } else if (formattedHash.length > 66) {
-        formattedHash = formattedHash.slice(0, 66);
-      }
+      // 3. Build & Sign Solana Transaction
+      const lamports = Math.round(
+        parseFloat(formData.courierFeeEth || "0.001") * LAMPORTS_PER_SOL
+      );
 
-      let txHash: `0x${string}`;
+      const transaction = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: publicKey,
+          toPubkey: ESCROW_PROGRAM_OR_VAULT,
+          lamports: lamports > 0 ? lamports : 1_000_000, // 0.001 SOL fallback
+        })
+      );
 
-      // 3. Contract Write with direct backend relay fallback
+      const latestBlockhash = await connection.getLatestBlockhash("confirmed");
+      transaction.recentBlockhash = latestBlockhash.blockhash;
+      transaction.feePayer = publicKey;
+
+      let txSignature: string;
+
       try {
-        if (!walletClient) {
-          throw new Error("Wallet client not available");
-        }
+        txSignature = await sendTransaction(transaction, connection);
+        await connection.confirmTransaction(
+          {
+            signature: txSignature,
+            blockhash: latestBlockhash.blockhash,
+            lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+          },
+          "confirmed"
+        );
+      } catch (signErr) {
+        console.warn("Client signature failed, trying backend relay...", signErr);
 
-        const bountyWei = parseEther(formData.courierFeeEth || "0.001");
-
-        txHash = await walletClient.writeContract({
-          account: address,
-          chain: baseSepolia,
-          address: CONTRACT_ADDRESS,
-          abi: ESCROW_CREATE_ABI,
-          functionName: "createParcel",
-          args: [
-            String(formData.receiverPhone || ""),
-            String(formData.destinationAddress || ""),
-            String(formData.contentsName || ""),
-            formattedHash as `0x${string}`,
-            String(ipfsCid || ""),
-          ],
-          value: bountyWei,
-        });
-
-        const client = publicClient || directPublicClient;
-        await client.waitForTransactionReceipt({ hash: txHash });
-      } catch (clientErr) {
-        console.warn("MetaMask client broadcast issue, using relay route...", clientErr);
-
+        // Fallback to backend relay if client refuses/fails
         const relayRes = await fetch("/api/relay-tx", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -150,9 +117,10 @@ export function useCreateParcelHandler() {
             receiverPhone: formData.receiverPhone,
             destinationAddress: formData.destinationAddress,
             contentsName: formData.contentsName,
-            confirmationHash: formattedHash,
+            confirmationHash,
             ipfsHash: ipfsCid,
-            feeEth: formData.courierFeeEth,
+            feeSol: formData.courierFeeEth,
+            senderPublicKey: publicKey.toBase58(),
           }),
         });
 
@@ -162,13 +130,12 @@ export function useCreateParcelHandler() {
         }
 
         const relayData = await relayRes.json();
-        txHash = relayData.txHash;
+        txSignature = relayData.txHash;
       }
 
-      // 4. Sync to PostgreSQL backend
+      // 4. Sync to Backend Database
       const token =
         typeof window !== "undefined" ? localStorage.getItem("token") : null;
-
       const trackingNumber = `POD-${Date.now().toString().slice(-6)}`;
 
       await fetch(`${baseUrl}/api/v1/parcels/sync`, {
@@ -187,17 +154,18 @@ export function useCreateParcelHandler() {
           delivery_code: rawPin,
           pin_code: rawPin,
           ipfs_hash: ipfsCid,
-          tx_hash: txHash,
+          tx_hash: txSignature,
         }),
       });
 
       return {
         success: true,
-        txHash,
+        txHash: txSignature,
         trackingNumber,
       };
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to create parcel";
+      const message =
+        err instanceof Error ? err.message : "Failed to create parcel on Solana";
       console.error("Create parcel error:", err);
       throw new Error(message);
     } finally {

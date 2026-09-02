@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useConnect, useAccount, useDisconnect } from "wagmi";
+import dynamic from "next/dynamic";
+import { useWallet } from "@solana/wallet-adapter-react";
 import {
   LayoutDashboard,
   ShieldCheck,
@@ -15,32 +16,17 @@ import {
   User,
 } from "lucide-react";
 
+const WalletMultiButton = dynamic(
+  async () =>
+    (await import("@solana/wallet-adapter-react-ui")).WalletMultiButton,
+  { ssr: false }
+);
+
 export default function HomePage() {
   const router = useRouter();
+  const { connected, publicKey, disconnect } = useWallet();
+  const address = publicKey ? publicKey.toBase58() : null;
 
-  const { connectors, connect } = useConnect();
-  const { isConnected, address } = useAccount();
-  const { disconnect } = useDisconnect();
-
-  // Find the browser extension / MetaMask connector directly
-  // Look for MetaMask specifically by ID, name, or generic injected type
-  const metaMaskConnector = connectors.find(
-    (c) =>
-      c.id === "io.metamask" ||
-      c.id === "metaMask" ||
-      c.id === "injected" ||
-      c.name.toLowerCase().includes("metamask")
-  ) || connectors[0]; // Fall back to first available injected connector
-
-  const handleConnectWallet = async () => {
-    if (!isConnected) {
-      try {
-        await connect({ connector: metaMaskConnector });
-      } catch (error) {
-        console.error("Error connecting wallet:", error);
-      }
-      }
-    }
   // Modal State
   const [isSignupOpen, setIsSignupOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -63,29 +49,16 @@ export default function HomePage() {
   const handleSignupSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    console.log("Signup", {
-      email,
-      password,
-      name,
-      selectedRole,
-    });
-
     setIsSignupOpen(false);
 
     switch (selectedRole) {
       case "sender":
-        if (!isConnected) {
-          handleConnectWallet(); // Trigger MetaMask prompt if not connected yet
-        }
         router.push("/dashboard");
         break;
       case "receiver":
         router.push("/receiver");
         break;
       case "courier":
-        if (!isConnected) {
-          handleConnectWallet(); // Trigger MetaMask prompt if not connected yet
-        }
         router.push("/courier");
         break;
     }
@@ -93,12 +66,6 @@ export default function HomePage() {
 
   const handleLoginSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
-    console.log("Login", {
-      email,
-      password,
-      selectedRole,
-    });
 
     setIsLoginOpen(false);
 
@@ -125,37 +92,38 @@ export default function HomePage() {
       name: "Sender / SME",
       role: "sender",
       description:
-        "Manage parcel deliveries, lock funds in smart escrow, and track orders.",
+        "Manage parcel deliveries, lock funds in Solana smart escrow, and track orders.",
       icon: <LayoutDashboard size={24} className="text-teal-600" />,
     },
     {
       name: "Receiver",
       role: "receiver",
       description:
-        "Track incoming parcels and release escrow securely upon delivery.",
+        "Track incoming parcels and provide verification codes upon delivery.",
       icon: <ShieldCheck size={24} className="text-teal-600" />,
     },
     {
       name: "Courier",
       role: "courier",
       description:
-        "Scan delivery QR codes, confirm handoffs, and claim payouts.",
+        "Scan delivery QR codes, confirm handoffs, and claim Solana payouts.",
       icon: <QrCode size={24} className="text-teal-600" />,
     },
   ];
 
   return (
     <>
+      {/* TOP NAVIGATION BAR */}
+      <header className="w-full bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between text-white">
+        <div className="flex items-center gap-2 font-bold text-lg">
+          <ShieldCheck className="text-teal-400" size={22} />
+          <span>POD Chain</span>
+        </div>
+        <div>
+          <WalletMultiButton className="!bg-teal-600 hover:!bg-teal-700 !h-9 !px-3 !rounded-xl !text-xs !font-bold" />
+        </div>
+      </header>
 
-    {/* TOP NAVIGATION BAR */}
-    <header className="w-full bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between text-white">
-      <div className="flex items-center gap-2 font-bold text-lg">
-        <ShieldCheck className="text-teal-400" size={22} />
-        <span>POD Chain</span>
-      </div>
-
-     
-    </header>
       <main className="min-h-screen bg-slate-50 flex flex-col lg:flex-row">
         {/* LEFT PANEL */}
         <section className="bg-slate-900 text-white w-full lg:w-5/12 xl:w-4/12 flex items-center p-10">
@@ -163,7 +131,7 @@ export default function HomePage() {
             <h1 className="text-5xl font-bold">POD Chain</h1>
             <p className="mt-6 text-slate-400 leading-relaxed">
               A blockchain-enabled, tamper-evident Proof of Delivery framework
-              designed specifically for SME logistics.
+              built on Solana Devnet for SME logistics.
             </p>
           </div>
         </section>
@@ -178,10 +146,10 @@ export default function HomePage() {
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
               {navHome.map((item) => (
                 <div
-                key={item.role}
-                onClick={() => handleRoleClick(item.role)}
-                className="flex flex-col justify-between rounded-2xl border bg-white p-6 shadow-sm hover:border-teal-500 hover:shadow-md transition cursor-pointer text-left w-full"
-    >
+                  key={item.role}
+                  onClick={() => handleRoleClick(item.role)}
+                  className="flex flex-col justify-between rounded-2xl border bg-white p-6 shadow-sm hover:border-teal-500 hover:shadow-md transition cursor-pointer text-left w-full"
+                >
                   <div>
                     <div className="flex items-center gap-3 mb-4">
                       <div className="rounded-xl bg-teal-50 p-3">
@@ -197,14 +165,13 @@ export default function HomePage() {
                     </p>
                   </div>
 
-                  {/* Single Clean Action Button */}
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleRoleClick(item.role);
                     }}
-                    className="w-full rounded-xl bg-teal-600 py-3 text-center text-sm font-semibold text-white transition hover:bg-teal-700 flex items-center justify-center gap-2"
+                    className="w-full rounded-xl bg-teal-600 py-3 text-center text-sm font-semibold text-white transition hover:bg-teal-700 flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <LogIn size={18} />
                     Log In as {item.name.split(" ")[0]}
@@ -216,7 +183,7 @@ export default function HomePage() {
         </section>
       </main>
 
-      {/* ================= LOGIN MODAL ================= */}
+      {/* LOGIN MODAL */}
       {isLoginOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
           <div className="relative w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
@@ -226,7 +193,7 @@ export default function HomePage() {
                 setIsLoginOpen(false);
                 setSelectedRole(null);
               }}
-              className="absolute right-4 top-4 text-slate-400 hover:text-slate-700"
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-700 cursor-pointer"
             >
               <X size={20} />
             </button>
@@ -294,7 +261,7 @@ export default function HomePage() {
 
               <button
                 type="submit"
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-teal-600 py-3 font-semibold text-white transition hover:bg-teal-700"
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-teal-600 py-3 font-semibold text-white transition hover:bg-teal-700 cursor-pointer"
               >
                 Login
                 <ArrowRight size={18} />
@@ -302,14 +269,14 @@ export default function HomePage() {
             </form>
 
             <div className="mt-6 text-center text-sm text-slate-500">
-            If you do not have an account yet, no problem. {" "}
+              Don&apos;t have an account?{" "}
               <button
                 type="button"
                 onClick={() => {
                   setIsLoginOpen(false);
                   setIsSignupOpen(true);
                 }}
-                className="font-semibold text-teal-600 hover:underline"
+                className="font-semibold text-teal-600 hover:underline cursor-pointer"
               >
                 Sign Up
               </button>
@@ -318,14 +285,14 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ================= SIGNUP MODAL ================= */}
+      {/* SIGNUP MODAL */}
       {isSignupOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
           <div className="relative w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
             <button
               type="button"
               onClick={() => setIsSignupOpen(false)}
-              className="absolute right-4 top-4 text-slate-400 hover:text-slate-700"
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-700 cursor-pointer"
             >
               <X size={20} />
             </button>
@@ -415,41 +382,35 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Web3 Wallet Option for Sender and Courier */}
+              {/* Solana Wallet Option */}
               {selectedRole !== "receiver" && (
                 <div className="pt-2">
                   <span className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-700">
-                    Connect Web3 Wallet (Optional)
+                    Connect Solana Wallet (Optional)
                   </span>
 
-                  {isConnected ? (
+                  {connected && address ? (
                     <div className="flex items-center gap-3">
                       <span className="font-mono text-xs bg-slate-800 text-teal-400 px-3 py-1.5 rounded-lg border border-slate-700">
-                        Connected: {address?.slice(0, 6)}...{address?.slice(-4)}
+                        {address.slice(0, 4)}...{address.slice(-4)}
                       </span>
                       <button
                         type="button"
                         onClick={() => disconnect()}
-                        className="text-xs text-red-500 hover:text-red-300 font-semibold px-2.5 py-1.5 border border-red-500/30 rounded-lg hover:bg-red-500/10 transition"
+                        className="text-xs text-red-500 hover:text-red-400 font-semibold px-2.5 py-1.5 border border-red-500/30 rounded-lg hover:bg-red-500/10 transition cursor-pointer"
                       >
                         Disconnect
                       </button>
                     </div>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={handleConnectWallet}
-                      className="text-xs bg-pink-600 hover:bg-pink-700 text-white font-bold px-4 py-2 rounded-xl transition shadow-sm"
-                    >
-                      Connect Wallet
-                    </button>
+                    <WalletMultiButton className="!bg-teal-600 hover:!bg-teal-700 !h-9 !px-3 !rounded-xl !text-xs !font-bold" />
                   )}
                 </div>
               )}
 
               <button
                 type="submit"
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-teal-600 py-3 font-semibold text-white transition hover:bg-teal-700"
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-teal-600 py-3 font-semibold text-white transition hover:bg-teal-700 cursor-pointer"
               >
                 Create Account
                 <ArrowRight size={18} />
@@ -464,7 +425,7 @@ export default function HomePage() {
                   setIsSignupOpen(false);
                   setIsLoginOpen(true);
                 }}
-                className="font-semibold text-teal-600 hover:underline"
+                className="font-semibold text-teal-600 hover:underline cursor-pointer"
               >
                 Log In
               </button>
@@ -474,4 +435,4 @@ export default function HomePage() {
       )}
     </>
   );
- }
+}
