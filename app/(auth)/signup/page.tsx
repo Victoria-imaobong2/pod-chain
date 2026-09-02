@@ -14,7 +14,8 @@ export default function SignUpPage() {
   const [role, setRole] = useState("SME");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
+  const [phone, setPhone] = useState("");
+  
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -31,7 +32,7 @@ export default function SignUpPage() {
           email: email.trim(),
           password: password,
           role: role,
-          phone_number: null,
+          phone_number: phone.trim() || undefined,
           wallet_address: null,
         }),
       });
