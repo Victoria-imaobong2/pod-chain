@@ -7,7 +7,6 @@ import {
   Truck,
   Hash,
   X,
-  Filter,
 } from "lucide-react";
 import StatusBadge from "@/components/shared/StatusBadge";
 import BottomNavSender from "@/components/navigation/BottomNavSender";
@@ -54,7 +53,6 @@ export default function SenderDashboard() {
 
   const [isSeeAllOpen, setIsSeeAllOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-
   const [recentDeliveries, setRecentDeliveries] = useState<DeliveryItem[]>([]);
 
   // Date range filter state
@@ -67,22 +65,26 @@ export default function SenderDashboard() {
 
   const fetchDeliveries = useCallback(async (): Promise<DeliveryItem[]> => {
     try {
-      const baseUrl = API_BASE_URL || "http://127.0.0.1:8000";
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const baseUrl = API_BASE_URL || "https://podchain-backend.onrender.com";
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("token") || localStorage.getItem("access_token")
+          : null;
 
       const headers: HeadersInit = {
         "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       };
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-        // Fetching only parcels created by logged in sender 
-      const res = await fetch(`${baseUrl}/api/v1/parcels/user-shipments`, { headers });
 
+      const res = await fetch(`${baseUrl}/api/v1/parcels`, { headers });
       if (res.ok) {
-        const data: BackendParcelItem[] = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          return data.map((p) => ({
+        const data = await res.json();
+        const parcelList: BackendParcelItem[] = Array.isArray(data)
+          ? data
+          : data.parcels || [];
+
+        if (parcelList.length > 0) {
+          return parcelList.map((p) => ({
             id: p.tracking_number || `POD-${p.id}`,
             item: p.contents_name || "General Goods",
             address: p.destination_address || "Owerri",
@@ -99,8 +101,9 @@ export default function SenderDashboard() {
         }
       }
 
-      // Fallback: Check local storage cache if backend returned empty/unauthenticated
-      const localData = typeof window !== "undefined" ? localStorage.getItem("pod_deliveries") : null;
+      // Fallback: Check local storage cache if backend returned empty
+      const localData =
+        typeof window !== "undefined" ? localStorage.getItem("pod_deliveries") : null;
       if (localData) {
         return JSON.parse(localData);
       }
@@ -123,9 +126,10 @@ export default function SenderDashboard() {
     };
 
     void runSync();
+    // Poll every 8 seconds instead of 3 to avoid spamming the backend
     const interval = setInterval(() => {
       void runSync();
-    }, 3000);
+    }, 8000);
 
     return () => {
       isMounted = false;
@@ -133,7 +137,7 @@ export default function SenderDashboard() {
     };
   }, [fetchDeliveries]);
 
-  // Derived filtered deliveries computed safely with useMemo (no setState inside effect)
+  // Derived filtered deliveries computed with useMemo
   const filteredDeliveries = useMemo(() => {
     let result = [...recentDeliveries];
     if (startDate) {
@@ -178,7 +182,9 @@ export default function SenderDashboard() {
         </p>
       </header>
 
-      <MobileWalletConnect />
+      <div className="mb-6">
+        <MobileWalletConnect />
+      </div>
 
       <section className="grid gap-4 grid-cols-1 md:grid-cols-3 mb-8">
         <div className="border border-slate-200 p-6 rounded-2xl bg-white shadow-xs flex justify-between items-start">
