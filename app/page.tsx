@@ -14,7 +14,9 @@ import {
   X,
   ArrowRight,
   User,
+  Phone
 } from "lucide-react";
+
 
 const WalletMultiButton = dynamic(
   async () =>
@@ -40,7 +42,7 @@ export default function HomePage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-
+  const [phone, setPhone] = useState("");
   const handleRoleClick = (role: "sender" | "receiver" | "courier") => {
     setSelectedRole(role);
     setIsLoginOpen(true);
@@ -353,6 +355,30 @@ export default function HomePage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
+                    className="w-full rounded-xl border border-slate-300 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-teal-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="signup-email"
+                  className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-700"
+                >
+                  Phone
+                </label>
+                <div className="relative">
+                  <Phone
+                    size={18}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
+                  <input
+                    id="signup-phone"
+                    type="tel"
+                    required
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="00000000000"
                     className="w-full rounded-xl border border-slate-300 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-teal-500"
                   />
                 </div>
