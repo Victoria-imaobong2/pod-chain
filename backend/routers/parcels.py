@@ -220,7 +220,13 @@ async def sync_parcel(
             }
         
         pin_value = data.pin or data.delivery_code
-        tx_time = datetime.now(timezone.utc) if data.tx_hash else None
+        
+        # Use timezone-naive UTC so asyncpg matches TIMESTAMP WITHOUT TIME ZONE
+        tx_time = (
+            datetime.now(timezone.utc).replace(tzinfo=None)
+            if data.tx_hash
+            else None
+        )
 
         new_parcel = Parcel(
             tracking_number=data.tracking_number,
@@ -571,7 +577,7 @@ async def confirm_delivery_complete(
     if pin_input and str(parcel.pin).strip() != str(pin_input).strip():
         raise HTTPException(status_code=400, detail="Invalid delivery confirmation PIN")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     parcel.status = "Delivered"
     parcel.proximity_checkpoint = "Delivered"
     parcel.delivered_at = now

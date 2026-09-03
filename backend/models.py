@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import enum
 
 from sqlalchemy import (
@@ -111,7 +111,7 @@ class Parcel(Base):
 
     created_at = Column(
         DateTime,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         nullable=False,
     )
 
@@ -120,12 +120,12 @@ class Parcel(Base):
         nullable=True,
     )
 
-    delivery_proof_image_url = Column(String, nullable=True,
-    )
+    delivery_proof_image_url = Column(String, nullable=True)
+
     delivered_at = Column(
-        DateTime(timezone=True), 
+        DateTime,
         nullable=True,
-        )
+    )
    
     dest_lat = Column(Float, nullable=True)
     dest_lng = Column(Float, nullable=True)
