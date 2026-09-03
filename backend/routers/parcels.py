@@ -365,10 +365,20 @@ async def get_receiver_shipments(
 @router.get("")
 @router.get("/")
 async def get_all_parcels(
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    user_role = str(current_user.get("role", "")).upper()
+
+    if user_role not in ["SME", "ADMIN"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access forbidden: Only merchants and administrators can view this dashboard.",
+        )
     try:
         stmt = select(Parcel).order_by(Parcel.created_at.desc())
+        if user_role == "SME":
+            stmt = stmt.where(Parcel.sender_id == current_user["id"])
         result = await db.execute(stmt)
         parcels = result.scalars().all()
 

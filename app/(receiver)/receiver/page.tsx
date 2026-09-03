@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useSyncExternalStore, useMemo } from "react";
-import { Package, Bell, MapPin, QrCode, X, Navigation } from "lucide-react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { Package, Bell, MapPin, QrCode, X, Navigation, ShieldCheck, Clock, ExternalLink } from "lucide-react";
 import StatusBadge from "@/components/shared/StatusBadge";
 import BottomNavReceiver from "@/components/navigation/BottomNavReceiver";
 import EditReceiverProfileModal, { ReceiverProfile } from "@/components/EditReceiverProfileModal";
@@ -19,11 +21,13 @@ export interface Shipment {
   status?: string;
   timestamp?: string;
   hash?: string;
+  rawHash?: string;
   pin?: string;
   address?: string;
   courierName?: string;
   courierPhone?: string;
   proximity_checkpoint?: string;
+  delivery_proof_image_url?: string;
 }
 
 export interface DynamicNotification {
@@ -41,15 +45,17 @@ const getNotificationItemStyle = (type: "creation" | "proximity" | "delivered") 
 };
 
 const DEFAULT_PROFILE: ReceiverProfile = {
-  name: "Victoria-Imaobong Solomon",
-  phone: "07039102053",
-  email: "solomonvictoria2023@gmail.com",
-  address: "Federal University of Technology Owerri",
+  name: "Receiver",
+  phone: "N/A",
+  email: "",
+  address: "Destination Address",
 };
 
 const subscribe = () => () => {};
 
 export default function ReceiverDashboard() {
+  const router = useRouter();
+
   const isClient = useSyncExternalStore(
     subscribe,
     () => true,
@@ -60,13 +66,32 @@ export default function ReceiverDashboard() {
   const [dismissedNotifIds, setDismissedNotifIds] = useState<string[]>([]);
   const [profile, setProfile] = useState<ReceiverProfile>(() => {
     if (typeof window === "undefined") return DEFAULT_PROFILE;
-    const saved = localStorage.getItem("pod_receiver_profile");
-    if (!saved) return DEFAULT_PROFILE;
-    try {
-      return JSON.parse(saved);
-    } catch {
-      return DEFAULT_PROFILE;
+    
+    // Prioritize active login session user
+    const savedUser = localStorage.getItem("user");
+    if (savedUser) {
+      try {
+        const u = JSON.parse(savedUser);
+        return {
+          name: u.name || "Receiver",
+          phone: u.phone_number || "N/A",
+          email: u.email || "",
+          address: "Registered Destination",
+        };
+      } catch {
+        // Fallback to saved profile if parse fails
+      }
     }
+
+    const savedProfile = localStorage.getItem("pod_receiver_profile");
+    if (savedProfile) {
+      try {
+        return JSON.parse(savedProfile);
+      } catch {
+        return DEFAULT_PROFILE;
+      }
+    }
+    return DEFAULT_PROFILE;
   });
 
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -115,20 +140,28 @@ export default function ReceiverDashboard() {
     try {
       const baseUrl = API_BASE_URL || "https://podchain-backend.onrender.com";
       const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-      const targetEmail = profile.email || "solomonvictoria2023@gmail.com";
 
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
+      // Enforce auth: redirect to login if no active JWT session
+      if (!token) {
+        router.replace("/login");
+        return;
       }
 
-      // Fetch from general parcels ledger to avoid unauthenticated 401 routes
-      const res = await fetch(`${baseUrl}/api/v1/parcels/`, {
+      const res = await fetch(`${baseUrl}/api/v1/parcels/receiver-shipments`, {
         method: "GET",
-        headers,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
       });
+
+      // If token expired or unauthorized, clear storage and kick to login
+      if (res.status === 401 || res.status === 403) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        router.replace("/login");
+        return;
+      }
 
       if (!res.ok) {
         console.warn("Could not fetch receiver shipments, status:", res.status);
@@ -137,30 +170,26 @@ export default function ReceiverDashboard() {
 
       const data = await res.json();
       if (Array.isArray(data)) {
-        // Match shipments belonging to this receiver
-        const matched = data.filter(
-          (p) =>
-            p.receiver_email?.toLowerCase() === targetEmail.toLowerCase() ||
-            p.receiver_phone === profile.phone ||
-            p.destination_address?.toLowerCase().includes(profile.address?.toLowerCase() || "")
-        );
-
-        const mapped: Shipment[] = matched.map((item) => ({
+        const mapped: Shipment[] = data.map((item) => ({
           id: item.tracking_number || `POD-${item.id}`,
           sender: "Verified Merchant",
           item: item.contents_name || "General Cargo",
           status: item.status || "Created",
-          timestamp: item.created_at
+          timestamp: item.transaction_timestamp
+            ? new Date(item.transaction_timestamp).toLocaleString()
+            : item.created_at
             ? item.created_at.substring(0, 16).replace("T", " ")
             : "Recent",
+          rawHash: item.tx_hash,
           hash: item.tx_hash
             ? item.tx_hash.substring(0, 6) + "..." + item.tx_hash.substring(item.tx_hash.length - 4)
             : "0x...",
-          pin: item.pin || item.delivery_code || item.pin_code || item.otp || "000000",
+          pin: item.pin || item.delivery_code || "000000",
           address: item.destination_address || profile.address,
           courierName: item.courier_name || "Assigning Courier...",
           courierPhone: item.courier_phone || "N/A",
           proximity_checkpoint: item.proximity_checkpoint,
+          delivery_proof_image_url: item.delivery_proof_image_url || item.ipfs_hash,
         }));
 
         setShipments(mapped);
@@ -168,7 +197,7 @@ export default function ReceiverDashboard() {
     } catch (err) {
       console.error("Failed to load receiver shipments:", err);
     }
-  }, [profile.email, profile.phone, profile.address]);
+  }, [profile.address, router]);
 
   useEffect(() => {
     const run = async () => {
@@ -214,7 +243,9 @@ export default function ReceiverDashboard() {
       <header className="flex justify-between items-center border-b border-slate-200 pb-6 mb-6">
         <div>
           <h1 className="text-3xl font-black tracking-tight text-slate-900">Receiver Terminal</h1>
-          <p className="text-slate-500 text-sm font-medium mt-0.5">Your monitored incoming blockchain shipments</p>
+          <p className="text-slate-500 text-sm font-medium mt-0.5">
+            Monitored incoming deliveries for <span className="font-semibold text-slate-700">{profile.email || "your account"}</span>
+          </p>
         </div>
 
         <div className="relative">
@@ -274,8 +305,8 @@ export default function ReceiverDashboard() {
                 <Package size={24} />
               </div>
               <div>
-                <h3 className="font-bold text-slate-800 text-base">No deliveries yet</h3>
-                <p className="text-slate-500 text-xs mt-1">Please come back later. Any incoming package dispatched to you will appear here in real-time.</p>
+                <h3 className="font-bold text-slate-800 text-base">No deliveries found</h3>
+                <p className="text-slate-500 text-xs mt-1">There are currently no shipments linked to your registered email.</p>
               </div>
             </div>
           ) : (
@@ -287,22 +318,41 @@ export default function ReceiverDashboard() {
                   </div>
                   <div>
                     <h3 className="font-extrabold tracking-tight text-slate-900 text-lg">{shipment.item || "General Goods"}</h3>
-                    <p className="text-xs text-slate-400 font-medium mt-0.5">Merchant: {shipment.sender || "POD Merchant"} • ID: {shipment.id}</p>
-                    <p className="text-[11px] font-mono text-slate-500 bg-slate-50 border px-1.5 py-0.5 rounded mt-2 w-fit">⛓️ Anchor: {shipment.hash || "0x..."}</p>
+                    <p className="text-xs text-slate-400 font-medium mt-0.5">Tracking Number: <span className="font-mono text-slate-700 font-bold">{shipment.id}</span></p>
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      <p className="text-[11px] font-mono text-slate-500 bg-slate-50 border px-2 py-0.5 rounded w-fit">
+                        ⛓️ Anchor: {shipment.hash}
+                      </p>
+                      <p className="text-[11px] text-slate-500 flex items-center gap-1 bg-slate-50 border px-2 py-0.5 rounded">
+                        <Clock size={12} className="text-teal-600" />
+                        {shipment.timestamp}
+                      </p>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 pt-3 md:pt-0">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 pt-3 md:pt-0">
                   <StatusBadge status={(shipment.status || "Created") as "Created" | "InTransit" | "Delivered"} />
-                  {shipment.status !== "Delivered" && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedKeyParcel(shipment)}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-colors shadow-xs cursor-pointer"
+                  
+                  <div className="flex items-center gap-2">
+                    {/* View Proof & Confirm Handover */}
+                    <Link
+                      href={`/verify?trackingId=${shipment.id}`}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl transition-colors shadow-xs"
                     >
-                      <QrCode size={14} /> Key
-                    </button>
-                  )}
+                      <ShieldCheck size={14} /> Review Handover
+                    </Link>
+
+                    {shipment.status !== "Delivered" && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedKeyParcel(shipment)}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-colors shadow-xs cursor-pointer"
+                      >
+                        <QrCode size={14} /> PIN Key
+                      </button>
+                    )}
+                  </div>
                 </div>
               </section>
             ))
@@ -317,6 +367,7 @@ export default function ReceiverDashboard() {
               <div>
                 <p className="font-bold text-slate-900">{profile.name}</p>
                 <p className="text-xs text-slate-500 mt-0.5">{profile.phone}</p>
+                <p className="text-xs font-medium text-teal-700 mt-0.5">{profile.email}</p>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">{profile.address}</p>
               </div>
             </div>
