@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useSyncExternalStore, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Package, Bell, MapPin, QrCode, X, Navigation, ShieldCheck, Clock, ExternalLink } from "lucide-react";
+import { Package, Bell, MapPin, QrCode, X, Navigation, ShieldCheck, Clock, LogOut } from "lucide-react";
 import StatusBadge from "@/components/shared/StatusBadge";
 import BottomNavReceiver from "@/components/navigation/BottomNavReceiver";
 import EditReceiverProfileModal, { ReceiverProfile } from "@/components/EditReceiverProfileModal";
@@ -51,6 +51,46 @@ const DEFAULT_PROFILE: ReceiverProfile = {
   address: "Destination Address",
 };
 
+// Safe helper to extract active user data from storage or JWT payload
+const getActiveUserSession = (): ReceiverProfile => {
+  if (typeof window === "undefined") return DEFAULT_PROFILE;
+
+  try {
+    const rawUser = localStorage.getItem("user");
+    if (rawUser) {
+      const u = JSON.parse(rawUser);
+      if (u.email) {
+        return {
+          name: u.name || "Receiver",
+          phone: u.phone_number || "N/A",
+          email: u.email.trim().toLowerCase(),
+          address: u.address || "Registered Destination",
+        };
+      }
+    }
+
+    // Fallback: decode claims directly from JWT token payload
+    const token = localStorage.getItem("token");
+    if (token && token.includes(".")) {
+      const payloadBase64 = token.split(".")[1];
+      const decodedJson = JSON.parse(atob(payloadBase64));
+      const emailFromToken = decodedJson.sub || decodedJson.email;
+      if (emailFromToken) {
+        return {
+          name: decodedJson.name || "Receiver",
+          phone: "N/A",
+          email: String(emailFromToken).trim().toLowerCase(),
+          address: "Registered Destination",
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("Could not decode active session profile:", err);
+  }
+
+  return DEFAULT_PROFILE;
+};
+
 const subscribe = () => () => {};
 
 export default function ReceiverDashboard() {
@@ -64,35 +104,7 @@ export default function ReceiverDashboard() {
 
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [dismissedNotifIds, setDismissedNotifIds] = useState<string[]>([]);
-  const [profile, setProfile] = useState<ReceiverProfile>(() => {
-    if (typeof window === "undefined") return DEFAULT_PROFILE;
-    
-    // Prioritize active login session user
-    const savedUser = localStorage.getItem("user");
-    if (savedUser) {
-      try {
-        const u = JSON.parse(savedUser);
-        return {
-          name: u.name || "Receiver",
-          phone: u.phone_number || "N/A",
-          email: u.email || "",
-          address: "Registered Destination",
-        };
-      } catch {
-        // Fallback to saved profile if parse fails
-      }
-    }
-
-    const savedProfile = localStorage.getItem("pod_receiver_profile");
-    if (savedProfile) {
-      try {
-        return JSON.parse(savedProfile);
-      } catch {
-        return DEFAULT_PROFILE;
-      }
-    }
-    return DEFAULT_PROFILE;
-  });
+  const [profile, setProfile] = useState<ReceiverProfile>(getActiveUserSession);
 
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isTrackModalOpen, setIsTrackModalOpen] = useState(false);
@@ -101,6 +113,16 @@ export default function ReceiverDashboard() {
   const [isProximityModalOpen, setIsProximityModalOpen] = useState(false);
   const [selectedKeyParcel, setSelectedKeyParcel] = useState<Shipment | null>(null);
   const [inputHash, setInputHash] = useState("");
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    localStorage.removeItem("pod_receiver_profile");
+    document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    router.replace("/login");
+  }, [router]);
+
+
 
   const notifications = useMemo(() => {
     const derivedAlerts: DynamicNotification[] = [];
@@ -141,9 +163,8 @@ export default function ReceiverDashboard() {
       const baseUrl = API_BASE_URL || "https://podchain-backend.onrender.com";
       const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-      // Enforce auth: redirect to login if no active JWT session
       if (!token) {
-        router.replace("/login");
+        handleLogout();
         return;
       }
 
@@ -155,11 +176,8 @@ export default function ReceiverDashboard() {
         },
       });
 
-      // If token expired or unauthorized, clear storage and kick to login
       if (res.status === 401 || res.status === 403) {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        router.replace("/login");
+        handleLogout();
         return;
       }
 
@@ -197,7 +215,7 @@ export default function ReceiverDashboard() {
     } catch (err) {
       console.error("Failed to load receiver shipments:", err);
     }
-  }, [profile.address, router]);
+  }, [profile.address, handleLogout]);
 
   useEffect(() => {
     const run = async () => {
@@ -244,54 +262,67 @@ export default function ReceiverDashboard() {
         <div>
           <h1 className="text-3xl font-black tracking-tight text-slate-900">Receiver Terminal</h1>
           <p className="text-slate-500 text-sm font-medium mt-0.5">
-            Monitored incoming deliveries for <span className="font-semibold text-slate-700">{profile.email || "your account"}</span>
+            Monitored incoming deliveries for <span className="font-semibold text-slate-800">{profile.email || "active account"}</span>
           </p>
         </div>
 
-        <div className="relative">
+        <div className="flex items-center gap-2">
+          {/* Notification Button */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsNotificationOpen(!isNotificationOpen)}
+              className="p-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl shadow-xs transition-all relative active:scale-95 cursor-pointer"
+            >
+              <Bell size={20} className={activeAlertsCount > 0 ? "animate-bounce" : ""} />
+              {activeAlertsCount > 0 && (
+                <span className="absolute top-2 right-2 w-5 h-5 bg-rose-500 text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white shadow-sm">
+                  {activeAlertsCount}
+                </span>
+              )}
+            </button>
+
+            {isNotificationOpen && (
+              <div className="absolute right-0 mt-3 w-80 md:w-96 bg-white border border-slate-200 rounded-2xl shadow-xl p-4 z-50 space-y-3 animate-in fade-in slide-in-from-top-4 duration-200">
+                <div className="flex justify-between items-center border-b pb-2">
+                  <h3 className="font-extrabold text-slate-900 text-sm">State Change Alerts</h3>
+                  <span className="text-[10px] font-bold bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full uppercase">Realtime</span>
+                </div>
+                {notifications.filter((n) => n.active).length === 0 ? (
+                  <p className="text-xs text-slate-400 py-4 text-center">No active package updates right now.</p>
+                ) : (
+                  notifications
+                    .filter((n) => n.active)
+                    .map((n) => (
+                      <div key={n.id} className={`p-3 rounded-xl border flex gap-3 items-start ${getNotificationItemStyle(n.type)}`}>
+                        {n.type === "proximity" ? (
+                          <Navigation size={16} className="text-amber-600 shrink-0 mt-0.5 animate-pulse" />
+                        ) : (
+                          <Package size={16} className="text-teal-600 shrink-0 mt-0.5" />
+                        )}
+                        <div className="flex-1">
+                          <p className="text-xs font-semibold leading-relaxed">{n.message}</p>
+                          <span className="text-[10px] text-slate-400 font-mono mt-1 block">{n.timestamp}</span>
+                        </div>
+                        <button type="button" onClick={() => dismissNotification(n.id)} className="text-slate-400 hover:text-slate-600 shrink-0 cursor-pointer">
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Explicit Sign Out / Switch User Action */}
           <button
             type="button"
-            onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-            className="p-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl shadow-xs transition-all relative active:scale-95 cursor-pointer"
+            onClick={handleLogout}
+            title="Sign out / switch account"
+            className="p-3 bg-white border border-slate-200 hover:bg-rose-50 hover:border-rose-200 text-slate-600 hover:text-rose-600 rounded-2xl shadow-xs transition cursor-pointer"
           >
-            <Bell size={22} className={activeAlertsCount > 0 ? "animate-bounce" : ""} />
-            {activeAlertsCount > 0 && (
-              <span className="absolute top-2 right-2 w-5 h-5 bg-rose-500 text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white shadow-sm">
-                {activeAlertsCount}
-              </span>
-            )}
+            <LogOut size={20} />
           </button>
-
-          {isNotificationOpen && (
-            <div className="absolute right-0 mt-3 w-80 md:w-96 bg-white border border-slate-200 rounded-2xl shadow-xl p-4 z-50 space-y-3 animate-in fade-in slide-in-from-top-4 duration-200">
-              <div className="flex justify-between items-center border-b pb-2">
-                <h3 className="font-extrabold text-slate-900 text-sm">State Change Alerts</h3>
-                <span className="text-[10px] font-bold bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full uppercase">Realtime</span>
-              </div>
-              {notifications.filter((n) => n.active).length === 0 ? (
-                <p className="text-xs text-slate-400 py-4 text-center">No active package updates right now.</p>
-              ) : (
-                notifications
-                  .filter((n) => n.active)
-                  .map((n) => (
-                    <div key={n.id} className={`p-3 rounded-xl border flex gap-3 items-start ${getNotificationItemStyle(n.type)}`}>
-                      {n.type === "proximity" ? (
-                        <Navigation size={16} className="text-amber-600 shrink-0 mt-0.5 animate-pulse" />
-                      ) : (
-                        <Package size={16} className="text-teal-600 shrink-0 mt-0.5" />
-                      )}
-                      <div className="flex-1">
-                        <p className="text-xs font-semibold leading-relaxed">{n.message}</p>
-                        <span className="text-[10px] text-slate-400 font-mono mt-1 block">{n.timestamp}</span>
-                      </div>
-                      <button type="button" onClick={() => dismissNotification(n.id)} className="text-slate-400 hover:text-slate-600 shrink-0 cursor-pointer">
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ))
-              )}
-            </div>
-          )}
         </div>
       </header>
 
@@ -306,7 +337,7 @@ export default function ReceiverDashboard() {
               </div>
               <div>
                 <h3 className="font-bold text-slate-800 text-base">No deliveries found</h3>
-                <p className="text-slate-500 text-xs mt-1">There are currently no shipments linked to your registered email.</p>
+                <p className="text-slate-500 text-xs mt-1">There are currently no shipments linked to {profile.email}.</p>
               </div>
             </div>
           ) : (
@@ -335,7 +366,6 @@ export default function ReceiverDashboard() {
                   <StatusBadge status={(shipment.status || "Created") as "Created" | "InTransit" | "Delivered"} />
                   
                   <div className="flex items-center gap-2">
-                    {/* View Proof & Confirm Handover */}
                     <Link
                       href={`/verify?trackingId=${shipment.id}`}
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl transition-colors shadow-xs"

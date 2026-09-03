@@ -23,6 +23,8 @@ export default function LoginPage() {
 
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    localStorage.removeItem("pod_receiver_profile");
+    localStorage.removeItem("pod_courier_profile");
     document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
 
     try {
