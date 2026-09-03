@@ -119,7 +119,7 @@ export default function SignUpPage() {
             <div className="relative">
               <Phone className="absolute left-3 top-3.5 text-slate-400" size={18} />
               <input
-                type="phone"
+                type="tel"
                 required
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
