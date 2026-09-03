@@ -449,6 +449,54 @@ async def get_available_parcels(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ============================================================
+# GET COURIER ACTIVE DELIVERIES
+# ============================================================
+
+@router.get("/courier-active")
+async def get_courier_active_shipments(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    courier_email = (
+        current_user.get("email")
+        or current_user.get("sub")
+        or ""
+    ).strip().lower()
+
+    if not courier_email:
+        raise HTTPException(status_code=400, detail="User token missing valid email.")
+
+    stmt = (
+        select(Parcel)
+        .where(
+            func.trim(func.lower(Parcel.courier_email)) == courier_email,
+            Parcel.status == "InTransit",
+        )
+        .order_by(Parcel.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    parcels = result.scalars().all()
+
+    return [
+        {
+            "id": p.id,
+            "tracking_number": p.tracking_number,
+            "contents_name": p.contents_name,
+            "receiver_email": p.receiver_email,
+            "receiver_phone": p.receiver_phone,
+            "destination_address": p.destination_address,
+            "proximity_checkpoint": p.proximity_checkpoint or "InTransit",
+            "status": p.status,
+            "pin": p.pin,
+            "ipfs_hash": p.ipfs_hash,
+            "delivery_proof_image_url": getattr(p, "delivery_proof_image_url", None) or p.ipfs_hash,
+            "tx_hash": p.tx_hash,
+            "transaction_timestamp": p.transaction_timestamp.isoformat() if getattr(p, "transaction_timestamp", None) else None,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        }
+        for p in parcels
+    ]
 
 # ============================================================
 # ACCEPT PARCEL
@@ -458,6 +506,7 @@ async def get_available_parcels(db: AsyncSession = Depends(get_db)):
 async def accept_parcel_job(
     parcel_id: int,
     data: AcceptParcelRequest,
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     stmt = select(Parcel).where(Parcel.id == parcel_id)
@@ -467,21 +516,35 @@ async def accept_parcel_job(
     if not parcel:
         raise HTTPException(status_code=404, detail=f"Parcel with ID {parcel_id} not found")
 
+    courier_email = (
+        current_user.get("email") 
+        or current_user.get("sub") 
+        or data.courier_email or ""
+        ).strip().lower()
+    
+    courier_name = (
+        current_user.get("name") 
+        or data.courier_name 
+        or "Courier"
+    )
+
     parcel.status = "InTransit"
     parcel.courier_address = data.courier_wallet
-    parcel.courier_phone = data.courier_phone
-    parcel.courier_name = data.courier_name
-    parcel.courier_email = data.courier_email
+    parcel.courier_phone = data.courier_phone or getattr(parcel, "courier_phone", None)
+    parcel.courier_name = courier_name
+    parcel.courier_email = courier_email
     parcel.proximity_checkpoint = "Dispatched from Merchant"
 
     await db.commit()
     await db.refresh(parcel)
 
     return {
-        "message": f"Parcel {parcel_id} assigned to courier",
+       "message": f"Parcel {parcel_id} assigned to courier",
         "status": parcel.status,
         "courier_wallet": parcel.courier_address,
+        "courier_email": parcel.courier_email,
         "courier_name": parcel.courier_name,
+        "proximity_checkpoint": parcel.proximity_checkpoint,
     }
 
 

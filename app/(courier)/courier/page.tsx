@@ -109,25 +109,35 @@ export default function CourierDashboard() {
     };
   }, [publicKey, connection]);
 
-  const fetchAllParcels = useCallback(async () => {
+  // Fetch both available jobs and courier's active deliveries
+  const fetchAllParcels = useCallback(async (): Promise<CourierParcel[]> => {
     try {
       const baseUrl = API_BASE_URL || "https://podchain-backend.onrender.com";
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-      const [resAvailable, resAll] = await Promise.allSettled([
-        fetch(`${baseUrl}/api/v1/parcels/available`),
-        fetch(`${baseUrl}/api/v1/parcels/`),
+      const authHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) {
+        authHeaders["Authorization"] = `Bearer ${token}`;
+      }
+
+      const [resAvailable, resActive] = await Promise.allSettled([
+        fetch(`${baseUrl}/api/v1/parcels/available`, { headers: authHeaders }),
+        fetch(`${baseUrl}/api/v1/parcels/courier-active`, { headers: authHeaders }),
       ]);
 
-      const availableData =
+      const availableData: CourierParcel[] =
         resAvailable.status === "fulfilled" && resAvailable.value.ok
           ? await resAvailable.value.json()
           : [];
-      const allData =
-        resAll.status === "fulfilled" && resAll.value.ok
-          ? await resAll.value.json()
+
+      const activeData: CourierParcel[] =
+        resActive.status === "fulfilled" && resActive.value.ok
+          ? await resActive.value.json()
           : [];
 
-      const combined = [...availableData, ...allData];
+      const combined = [...availableData, ...activeData];
       const uniqueMap = new Map<string, CourierParcel>();
       combined.forEach((item) => uniqueMap.set(String(item.id), item));
 
@@ -143,7 +153,7 @@ export default function CourierDashboard() {
 
     const runFetch = async () => {
       const data = await fetchAllParcels();
-      if (isMounted && data.length > 0) {
+      if (isMounted) {
         setParcels(data);
       }
     };
@@ -171,13 +181,7 @@ export default function CourierDashboard() {
     (p) => !p.status || p.status === "Created"
   );
 
-  const activeParcels = parcels.filter((p) => {
-    const isTransit = p.status === "InTransit";
-    if (!isTransit) return false;
-    if (!address || !p.courier_address) return true;
-    return p.courier_address.toLowerCase() === address.toLowerCase();
-  });
-
+  const activeParcels = parcels.filter((p) => p.status === "InTransit");
   const completedParcels = parcels.filter((p) => p.status === "Delivered");
 
   const getDisplayedParcels = (): CourierParcel[] => {
@@ -198,19 +202,32 @@ export default function CourierDashboard() {
     setSelectedParcel(null);
 
     try {
-      const baseUrl = API_BASE_URL || "http://127.0.0.1:8000";
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const userStr = typeof window !== "undefined" ? localStorage.getItem("user") : null;
+      const user = userStr ? JSON.parse(userStr) : {};
+
+      const baseUrl = API_BASE_URL || "https://podchain-backend.onrender.com";
+
       const res = await fetch(`${baseUrl}/api/v1/parcels/${parcelId}/accept`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           courier_wallet: address,
-          courier_name: "Verified Rider",
-          courier_phone: "070310000000",
+          courier_email: user.email || "",
+          courier_name: user.name || "Verified Rider",
+          courier_phone: user.phone_number || "070310000000",
         }),
       });
 
-      if (!res.ok) throw new Error("Could not accept job.");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData?.detail || "Could not accept job.");
+      }
 
+      // Optimistic UI state update
       setParcels((prev) =>
         prev.map((p) =>
           String(p.id) === String(parcelId)
@@ -220,8 +237,12 @@ export default function CourierDashboard() {
       );
 
       setActiveTab("active");
+
+      // Re-fetch immediately to align with DB state
       const updated = await fetchAllParcels();
-      if (updated.length > 0) setParcels(updated);
+      if (updated && updated.length > 0) {
+        setParcels(updated);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "An error occurred";
       alert(msg);
@@ -231,7 +252,7 @@ export default function CourierDashboard() {
   // 2. Proximity Update
   const handleUpdateProximity = async (parcelId: number | string, checkpoint: string) => {
     try {
-      const baseUrl = API_BASE_URL || "http://127.0.0.1:8000";
+      const baseUrl = API_BASE_URL || "https://podchain-backend.onrender.com";
       await fetch(`${baseUrl}/api/v1/parcels/${parcelId}/proximity`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -265,7 +286,7 @@ export default function CourierDashboard() {
       if (result?.success) {
         setStatusMsg({ type: "success", text: "Escrow released! Updating delivery status..." });
 
-        const baseUrl = API_BASE_URL || "http://127.0.0.1:8000";
+        const baseUrl = API_BASE_URL || "https://podchain-backend.onrender.com";
 
         try {
           await fetch(`${baseUrl}/api/v1/parcels/${selectedParcel.id}/confirm-delivery`, {
@@ -274,6 +295,7 @@ export default function CourierDashboard() {
             body: JSON.stringify({
               tx_hash: result.txHash,
               delivery_code: pinInput,
+              pin: pinInput,
             }),
           });
         } catch (dbErr) {
