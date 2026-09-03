@@ -139,7 +139,7 @@ async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):
             "id": user.id,
             "name": user.name,
             "email": user.email,
-            "role": user.role.value if hasattr(user.role, "value") else str(user.role),
+            "role": role_str,
             "wallet_address": user.wallet_address,
         },
     }
