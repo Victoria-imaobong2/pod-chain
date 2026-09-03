@@ -32,7 +32,7 @@ export default function SignUpPage() {
           name: name.trim(),
           email: email.trim().toLowerCase(),
           password: password,
-          role: selectedRole,
+          role: selectedRole.toUpperCase(),
           phone_number: phone.trim() || undefined,
           wallet_address: walletAddress || null,
         }),
