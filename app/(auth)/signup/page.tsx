@@ -11,11 +11,12 @@ export default function SignUpPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("SME");
+  const [selectedRole, setSelectedRole] = useState("SME");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [phone, setPhone] = useState("");
-  
+  const [walletAddress, setWalletAddress] = useState("");
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -29,11 +30,11 @@ export default function SignUpPage() {
         },
         body: JSON.stringify({
           name: name.trim(),
-          email: email.trim(),
+          email: email.trim().toLowerCase(),
           password: password,
-          role: role,
+          role: selectedRole,
           phone_number: phone.trim() || undefined,
-          wallet_address: null,
+          wallet_address: walletAddress || null,
         }),
       });
 
@@ -133,8 +134,8 @@ export default function SignUpPage() {
               Account Type
             </label>
             <select
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
+              value={selectedRole}
+              onChange={(e) => setSelectedRole(e.target.value)}
               className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all text-slate-900"
             >
               <option value="SME">Sender (SME)</option>

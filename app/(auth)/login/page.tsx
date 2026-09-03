@@ -58,14 +58,15 @@ export default function LoginPage() {
       localStorage.setItem("token", data.access_token);
 
       if (data.user) {
-        localStorage.setItem("user", JSON.stringify(data.user));
+        const updatedUser = { ...data.user, role: selectedRole };
+        localStorage.setItem("user", JSON.stringify(updatedUser));
       }
 
       // 2. Set Cookie for Next.js SSR middleware
       document.cookie = `token=${data.access_token}; path=/; max-age=604800; SameSite=Lax`;
 
       // 3. Route explicitly according to chosen role
-      const role = String(data.user?.role || selectedRole).toUpperCase();
+      const role = String(selectedRole).toUpperCase();
 
       if (role === "SME") {
         router.push("/dashboard");

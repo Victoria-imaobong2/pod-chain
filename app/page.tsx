@@ -131,7 +131,7 @@ export default function HomePage() {
             <h1 className="text-5xl font-bold">POD Chain</h1>
             <p className="mt-6 text-slate-400 leading-relaxed">
               A blockchain-enabled, tamper-evident Proof of Delivery framework
-              built on Solana Devnet for SME logistics.
+              built on Solana for SME logistics.
             </p>
           </div>
         </section>

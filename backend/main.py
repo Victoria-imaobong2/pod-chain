@@ -120,9 +120,12 @@ async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):
         )
 
     # Pick the frontend-chosen role or fall back to the registered database role
-    raw_role = credentials.selected_role or user.role
-    role_str = raw_role.value if hasattr(raw_role, "value") else str(raw_role)
-    role_str = role_str.upper()
+    if credentials.selected_role:
+        role_str = str(credentials.selected_role).upper()
+    else:
+        raw_role = user.role
+        role_str = raw_role.value if hasattr(raw_role, "value") else str(raw_role)
+        role_str = role_str.upper()
 
     token_data = {
         "sub": user.email,
