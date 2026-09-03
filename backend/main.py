@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from typing import Optional
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
@@ -69,7 +70,7 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
-
+    selected_role: Optional[str] = None  # "SME", "COURIER", or "RECEIVER"
 
 # --- Endpoints ---
 
@@ -107,7 +108,8 @@ async def register(user_data: RegisterRequest, db: AsyncSession = Depends(get_db
 
 @app.post("/api/auth/login")
 async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):
-    stmt = select(UserModel).where(UserModel.email == credentials.email)
+    clean_email = credentials.email.lower().strip()
+    stmt = select(UserModel).where(UserModel.email == clean_email)
     result = await db.execute(stmt)
     user = result.scalar_one_or_none()
 
@@ -117,10 +119,15 @@ async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):
             detail="Invalid email or password, retry with correct credentials.",
         )
 
+    # Pick the frontend-chosen role or fall back to the registered database role
+    raw_role = credentials.selected_role or user.role
+    role_str = raw_role.value if hasattr(raw_role, "value") else str(raw_role)
+    role_str = role_str.upper()
+
     token_data = {
         "sub": user.email,
         "id": user.id,
-        "role": user.role.value if hasattr(user.role, "value") else str(user.role),
+        "role": role_str,
     }
 
     access_token = create_access_token(data=token_data)
@@ -139,7 +146,6 @@ async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 app.include_router(parcel_router)
-
 
 @app.get("/")
 def read_root():

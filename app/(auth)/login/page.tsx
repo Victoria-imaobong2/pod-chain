@@ -6,8 +6,11 @@ import Link from "next/link";
 import { Lock, Mail, ArrowRight, ShieldCheck, AlertTriangle } from "lucide-react";
 import { API_BASE_URL } from "@/lib/config";
 
+type UserRoleOption = "SME" | "COURIER" | "RECEIVER";
+
 export default function LoginPage() {
   const router = useRouter();
+  const [selectedRole, setSelectedRole] = useState<UserRoleOption>("RECEIVER");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -31,12 +34,11 @@ export default function LoginPage() {
         body: JSON.stringify({
           email: email.trim().toLowerCase(),
           password: password,
+          selected_role: selectedRole,
         }),
       });
 
       const data = await response.json();
-      console.log("LOGIN STATUS:", response.status);
-      console.log("LOGIN RESPONSE:", data);
 
       if (!response.ok) {
         throw new Error(
@@ -50,20 +52,18 @@ export default function LoginPage() {
         );
       }
 
-      // 1. Save authentication token for client-side API requests
+      // 1. Save authentication token and user profile
       localStorage.setItem("token", data.access_token);
 
       if (data.user) {
         localStorage.setItem("user", JSON.stringify(data.user));
       }
 
-      // 2. Set Cookie for Next.js SSR middleware route protection (7-day duration)
+      // 2. Set Cookie for Next.js SSR middleware
       document.cookie = `token=${data.access_token}; path=/; max-age=604800; SameSite=Lax`;
 
-      console.log("TOKEN SAVED:", localStorage.getItem("token"));
-
-      // 3. Route user based on role
-      const role = String(data.user?.role || "SME").toUpperCase();
+      // 3. Route explicitly according to chosen role
+      const role = String(data.user?.role || selectedRole).toUpperCase();
 
       if (role === "SME") {
         router.push("/dashboard");
@@ -72,11 +72,9 @@ export default function LoginPage() {
       } else if (role === "COURIER") {
         router.push("/courier");
       } else {
-        throw new Error(`Unknown user role returned by backend: ${role}`);
+        throw new Error(`Unknown user role returned: ${role}`);
       }
     } catch (err: unknown) {
-      console.error("LOGIN ERROR:", err);
-
       const message =
         err instanceof Error
           ? err.message
@@ -90,14 +88,51 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-xl p-6 md:p-8">
-        <div className="flex flex-col items-center mb-8">
+        <div className="flex flex-col items-center mb-6">
           <div className="p-3 bg-teal-50 rounded-2xl text-teal-700 mb-3">
             <ShieldCheck size={32} />
           </div>
           <h1 className="text-2xl font-bold text-slate-950">Welcome back</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Access your secure Logistics proof of delivery app
+            Access your secure PodChain workspace
           </p>
+        </div>
+
+        {/* Role Switcher Tabs */}
+        <div className="bg-slate-100 p-1 rounded-xl mb-6 flex text-xs font-semibold">
+          <button
+            type="button"
+            onClick={() => setSelectedRole("SME")}
+            className={`flex-1 py-2.5 rounded-lg transition-all text-center cursor-pointer ${
+              selectedRole === "SME"
+                ? "bg-white text-teal-700 shadow-sm font-bold"
+                : "text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            Sender
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedRole("COURIER")}
+            className={`flex-1 py-2.5 rounded-lg transition-all text-center cursor-pointer ${
+              selectedRole === "COURIER"
+                ? "bg-white text-teal-700 shadow-sm font-bold"
+                : "text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            Courier
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedRole("RECEIVER")}
+            className={`flex-1 py-2.5 rounded-lg transition-all text-center cursor-pointer ${
+              selectedRole === "RECEIVER"
+                ? "bg-white text-teal-700 shadow-sm font-bold"
+                : "text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            Receiver
+          </button>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
@@ -147,7 +182,7 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full bg-teal-600 hover:bg-teal-700 text-white py-3.5 rounded-xl font-semibold transition-all shadow-md flex items-center justify-center gap-2 mt-2 disabled:opacity-50 cursor-pointer"
           >
-            {loading ? "Authenticating..." : "Sign In to Portal"}
+            {loading ? "Authenticating..." : `Sign In as ${selectedRole === "SME" ? "Sender" : selectedRole === "COURIER" ? "Courier" : "Receiver"}`}
             {!loading && <ArrowRight size={18} />}
           </button>
         </form>
