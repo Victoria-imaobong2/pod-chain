@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from typing import Optional
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from sqlalchemy.future import select
@@ -62,10 +62,20 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     name: str
     password: str
-    role: UserRole = UserRole.SME
+    role: UserRole 
     phone_number: str | None = None
     wallet_address: str | None = None
 
+    @field_validator("role", mode="before")
+    @classmethod
+    def match_enum(cls, v):
+        if isinstance(v, str):
+            val = v.strip()
+            # Match against enum name (COURIER) or value ("courier" / "COURIER")
+            for member in UserRole:
+                if member.name.lower() == val.lower() or str(member.value).lower() == val.lower():
+                    return member
+        return v
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -103,6 +113,7 @@ async def register(user_data: RegisterRequest, db: AsyncSession = Depends(get_db
         "message": "User registered successfully",
         "id": new_user.id,
         "email": new_user.email,
+        "role": new_user.role.value if hasattr(new_user.role, "value") else str(new_user.role),
     }
 
 
