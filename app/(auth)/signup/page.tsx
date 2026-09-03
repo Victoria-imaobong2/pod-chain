@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Lock, Mail, User, ArrowRight, ShieldCheck, AlertTriangle } from "lucide-react";
+import { Lock, Mail, User, ArrowRight, ShieldCheck, AlertTriangle, Phone } from "lucide-react";
 import { API_BASE_URL } from "@/lib/config";
 
 export default function SignUpPage() {
@@ -107,6 +107,23 @@ export default function SignUpPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="email@youremail.com"
+                className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all text-slate-900"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-600">
+              Phone Number
+            </label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-3.5 text-slate-400" size={18} />
+              <input
+                type="phone"
+                required
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="00000000000"
                 className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all text-slate-900"
               />
             </div>
