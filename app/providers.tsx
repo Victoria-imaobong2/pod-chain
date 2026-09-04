@@ -9,9 +9,18 @@ import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import { clusterApiUrl } from "@solana/web3.js";
 import {
+  SolanaMobileWalletAdapter,
+  createDefaultAddressSelector,
+  createDefaultAuthorizationResultCache,
+  createDefaultWalletNotFoundHandler,
+} from "@solana-mobile/wallet-adapter-mobile";
+import {
   QueryClient,
   QueryClientProvider,
 } from "@tanstack/react-query";
+
+//import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
+
 
 // Default Solana Wallet Adapter styling
 import "@solana/wallet-adapter-react-ui/styles.css";
@@ -25,7 +34,22 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
   );
 
   // 2. Configure Wallets (Standard Wallets like Phantom/Solflare auto-detect via Wallet Standard)
-  const wallets = useMemo(() => [], []);
+  const wallets = useMemo(
+    () => [
+      new SolanaMobileWalletAdapter({
+        addressSelector: createDefaultAddressSelector(),
+        appIdentity: {
+          name: "PodChain",
+          uri: typeof window !== "undefined" ? window.location.origin : "https://podchain.app",
+          icon: "/logo.jpg",
+        },
+        authorizationResultCache: createDefaultAuthorizationResultCache(),
+        cluster: network,
+        onWalletNotFound: createDefaultWalletNotFoundHandler(),
+      }),
+    ],
+    [network]
+  );
 
   // 3. React Query client setup
   const [queryClient] = useState(
@@ -41,7 +65,7 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
+      <WalletProvider wallets={wallets} autoConnect={false}>
         <WalletModalProvider>
           <QueryClientProvider client={queryClient}>
             {children}

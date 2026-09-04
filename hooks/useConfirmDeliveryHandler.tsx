@@ -5,12 +5,13 @@ import { API_BASE_URL } from "@/lib/config";
 
 export function useConfirmDeliveryHandler() {
   const [isPending, setIsPending] = useState(false);
-
+  
   const handleConfirmDelivery = async (
     parcelId: number | string,
     pin: string
-  ) => {
+  ): Promise<{ success: boolean; txHash?: string; durationSec?: string }> => {
     setIsPending(true);
+    const t0 = performance.now();
 
     try {
       const baseUrl = API_BASE_URL || "https://podchain-backend.onrender.com";
@@ -48,6 +49,7 @@ export function useConfirmDeliveryHandler() {
       return {
         success: true,
         txHash: data.tx_hash || `sol-verified-${Date.now()}`,
+        durationSec: ((performance.now() - t0) / 1000).toFixed(2),
       };
     } catch (err: unknown) {
       console.error("Courier delivery confirmation failed:", err);

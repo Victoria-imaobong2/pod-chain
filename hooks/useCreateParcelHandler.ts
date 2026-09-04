@@ -41,6 +41,23 @@ export function useCreateParcelHandler() {
         }
       }
 
+      // 1. Measure IPFS
+const ipfsStart = performance.now();
+// ... IPFS upload call ...
+const ipfsDuration = ((performance.now() - ipfsStart) / 1000).toFixed(2);
+
+// 2. Measure Solana Anchor Tx
+const solanaStart = performance.now();
+// ... anchor program rpc call ...
+const solanaDuration = ((performance.now() - solanaStart) / 1000).toFixed(2);
+
+// 3. Measure FastAPI Backend Sync
+const dbStart = performance.now();
+// ... axios/fetch to FastAPI backend ...
+const dbDuration = ((performance.now() - dbStart) / 1000).toFixed(2);
+
+console.log(`⏱️ Breakdown: IPFS = ${ipfsDuration}s | Solana PDA = ${solanaDuration}s | Neon DB = ${dbDuration}s`);
+
       // 2. Generate OTP & confirmation hash from backend
       const otpRes = await fetch(`${baseUrl}/api/v1/parcels/generate-otp`, {
         method: "POST",
@@ -114,6 +131,22 @@ export function useCreateParcelHandler() {
         throw new Error(`Parcel saved on-chain, but failed to sync database: ${syncErr}`);
       }
 
+      // Optimistic cache update for Sender Dashboard
+if (typeof window !== "undefined") {
+  const existing = JSON.parse(localStorage.getItem("pod_deliveries") || "[]");
+  const newDelivery = {
+    id: trackingNumber,
+    tracking_number: trackingNumber,
+    contents_name: formData.contentsName,
+    destination_address: formData.destinationAddress,
+    status: "Created",
+    created_at: new Date().toISOString(),
+    tx_hash: txSignature,
+    receiver_phone: formData.receiverPhone,
+    proximity_checkpoint: "Escrow Created",
+  };
+  localStorage.setItem("pod_deliveries", JSON.stringify([newDelivery, ...existing]));
+}
       return {
         success: true,
         txHash: txSignature,

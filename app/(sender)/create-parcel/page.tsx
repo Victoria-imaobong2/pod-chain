@@ -5,20 +5,37 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useCreateParcelHandler } from "../../../hooks/useCreateParcelHandler";
-import { 
-  Package, 
-  Mail, 
-  Phone, 
-  MapPin, 
-  Coins, 
-  UploadCloud, 
-  FileCheck,
-  AlertCircle,
-  CheckCircle2,
-  Loader2,
-  ArrowLeft
-} from "lucide-react";
 import Link from "next/link";
+
+type IconProps = React.SVGProps<SVGSVGElement>;
+
+const Icon = ({ className, children, ...props }: IconProps) => (
+  <svg
+    {...props}
+    className={className}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    {children}
+  </svg>
+);
+
+const Package = (props: IconProps) => <Icon {...props}><path d="m16.5 9.4-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></Icon>;
+const Mail = (props: IconProps) => <Icon {...props}><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></Icon>;
+const Phone = (props: IconProps) => <Icon {...props}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 5.18 2 2 0 0 1 4.11 3h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8 10.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92Z"/></Icon>;
+const MapPin = (props: IconProps) => <Icon {...props}><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></Icon>;
+const Coins = (props: IconProps) => <Icon {...props}><circle cx="8" cy="8" r="5"/><path d="M8 3v10M3 8h10M16 11a5 5 0 1 1-3 9M16 14v4M14 16h4"/></Icon>;
+const UploadCloud = (props: IconProps) => <Icon {...props}><path d="M16 16l-4-4-4 4M12 12v9M20.4 17.5A5 5 0 0 0 18 8.5 7 7 0 0 0 4.7 11 4.5 4.5 0 0 0 5.5 20H7"/></Icon>;
+const FileCheck = (props: IconProps) => <Icon {...props}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 16l2 2 4-4"/></Icon>;
+const AlertCircle = (props: IconProps) => <Icon {...props}><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></Icon>;
+const CheckCircle2 = (props: IconProps) => <Icon {...props}><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></Icon>;
+const Loader2 = (props: IconProps) => <Icon {...props}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></Icon>;
+const ArrowLeft = (props: IconProps) => <Icon {...props}><path d="m15 18-6-6 6-6M9 12h12"/></Icon>;
 
 // Dynamically import WalletMultiButton to prevent Next.js SSR hydration mismatches
 const WalletMultiButton = dynamic(
@@ -43,6 +60,10 @@ export default function CreateParcelPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successData, setSuccessData] = useState<{ trackingNumber: string; txHash: string } | null>(null);
 
+  const [latencyStats, setLatencyStats] = useState<{
+  totalTimeSec: string;
+  timestamp: string;
+} | null>(null);
   // Authentication guard
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -68,25 +89,46 @@ export default function CreateParcelPage() {
     e.preventDefault();
     setErrorMsg(null);
     setSuccessData(null);
+    setLatencyStats(null);
 
-    //if (!connected) {
-      //setErrorMsg("Please connect your Phantom wallet first to sign the escrow transaction.");
-      //return;
-    //}
+    // High-resolution start timer
+    const t0 = performance.now();
+
+    if (!connected) {
+      setErrorMsg("Please connect your Phantom wallet first to sign the escrow transaction.");
+      return;
+    }
 
     try {
       const result = await handleCreateParcel(formData, file);
+      const t1 = performance.now();
+      const totalTimeSec = ((t1 - t0) / 1000).toFixed(2);
       if (result.success) {
         setSuccessData({
           trackingNumber: result.trackingNumber,
           txHash: result.txHash,
         });
+
+        setLatencyStats({
+          totalTimeSec,
+          timestamp: new Date().toLocaleTimeString(),
+        });
+
+        console.table({
+          Metric: "Parcel Creation End-to-End Latency",
+          "Duration (s)": `${totalTimeSec}s`,
+          "Tracking ID": result.trackingNumber,
+          "Tx Signature": result.txHash,
+        });
+
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to create parcel";
       setErrorMsg(message);
     }
   };
+
+  
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 py-12 px-4 sm:px-6 lg:px-8 flex flex-col items-center font-sans antialiased">
@@ -123,6 +165,15 @@ export default function CreateParcelPage() {
                 <p className="font-semibold text-teal-900 dark:text-teal-300">Escrow Created Successfully on Solana Devnet!</p>
                 <p className="mt-1">Tracking Number: <span className="font-mono font-bold text-slate-900 dark:text-white">{successData.trackingNumber}</span></p>
                 <p className="text-xs text-teal-700 dark:text-teal-400/80 break-all mt-0.5 font-mono">TX: {successData.txHash}</p>
+
+                {/* Latency Empirical Benchmark Badge */}
+                {latencyStats && (
+                  <div className="mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-teal-100/70 dark:bg-teal-900/60 text-[11px] font-mono font-medium text-teal-900 dark:text-teal-200 border border-teal-300/60 dark:border-teal-700/50">
+                    <span>⚡ Creation & Settlement Time:</span>
+                    <span className="font-bold">{latencyStats.totalTimeSec}s</span>
+                  </div>
+                )}
+                
                 <div className="mt-3">
                   <Link
                     href="/dashboard"
@@ -283,10 +334,14 @@ export default function CreateParcelPage() {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={isPending}
+              disabled={isPending || !connected}
               className="w-full mt-2 py-3 px-4 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-500 text-white font-semibold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
             >
-              {isPending ? (
+              {
+                !connected ?(
+                  <span>Please connect your Phantom wallet to proceed</span>
+                ):
+              isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   <span>Processing Escrow & Signing Transaction...</span>

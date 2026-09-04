@@ -376,7 +376,7 @@ async def get_all_parcels(
 ):
     user_role = str(current_user.get("role", "")).upper()
 
-    if user_role not in ["SME", "ADMIN"]:
+    if user_role not in ["SME", "sender", "ADMIN"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access forbidden: Only merchants and administrators can view this dashboard.",

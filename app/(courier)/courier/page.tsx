@@ -57,6 +57,7 @@ export default function CourierDashboard() {
   const { publicKey, connected, disconnect } = useWallet();
   const address = publicKey ? publicKey.toBase58() : null;
 
+  const [latency, setLatency] = useState<string | null>(null);
   const [solBalance, setSolBalance] = useState<number | null>(null);
   const { handleConfirmDelivery, isPending } = useConfirmDeliveryHandler();
 
@@ -279,28 +280,44 @@ export default function CourierDashboard() {
     setStatusMsg({ type: "info", text: "Submitting proof of delivery on Solana..." });
 
     const onChainId = Number(selectedParcel.id) || 1;
-
+    
     try {
       const result = await handleConfirmDelivery(onChainId, pinInput);
 
       if (result?.success) {
+        if (result.durationSec) {
+
+        setLatency(result.durationSec);}
         setStatusMsg({ type: "success", text: "Escrow released! Updating delivery status..." });
 
         const baseUrl = API_BASE_URL || "https://podchain-backend.onrender.com";
 
+        // Include Authorization Token
+        const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
         try {
-          await fetch(`${baseUrl}/api/v1/parcels/${selectedParcel.id}/confirm-delivery`, {
+          const syncRes = await fetch(`${baseUrl}/api/v1/parcels/${selectedParcel.id}/confirm-delivery`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+              "Content-Type": "application/json",
+              ...(token ? { "Authorization": `Bearer ${token}` } : {})
+            },
             body: JSON.stringify({
               tx_hash: result.txHash,
               delivery_code: pinInput,
               pin: pinInput,
             }),
           });
+          
+          if (!syncRes.ok) {
+            console.error("Backend failed to update status:", await syncRes.text());
+          }
         } catch (dbErr) {
           console.warn("Backend confirm sync fallback:", dbErr);
         }
+
+        // Normalize status to lowercase or uppercase depending on your tabs filter
+        const updatedStatus = "delivered"; 
 
         setParcels((prev) =>
           prev.map((p) =>
@@ -313,12 +330,13 @@ export default function CourierDashboard() {
         setPinInput("");
         fetchBalance();
 
+        // Give user time to see the latency benchmark and close modal
         setTimeout(async () => {
           setSelectedParcel(null);
-          setStatusMsg(null);
+         
           const updated = await fetchAllParcels();
-          if (updated.length > 0) setParcels(updated);
-        }, 1500);
+          if (updated && updated.length > 0) setParcels(updated);
+        }, 3500);
       }
     } catch (err: unknown) {
       console.error("Delivery settlement failed:", err);
